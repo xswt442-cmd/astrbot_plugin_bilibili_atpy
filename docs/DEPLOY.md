@@ -49,7 +49,7 @@
    ```
    Loading plugin astrbot_plugin_bilibili_atpy ...
    Plugin astrbot_plugin_bilibili_atpy (v0.1.1) by xswt442-cmd: ...
-   [atpy] 后台调度已启动：每天 3-5 轮，9-23 点之间
+   [atpy] 后台调度已启动：每天 1-1 轮，9-23 点之间
    [atpy] 今天排了 N 轮：18:33、22:41
    ```
 
