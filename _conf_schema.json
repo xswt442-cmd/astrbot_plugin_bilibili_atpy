@@ -1,0 +1,98 @@
+{
+  "enabled": {
+    "description": "启用后台定时",
+    "type": "bool",
+    "default": true,
+    "hint": "关掉后不再自动跑，但 /爱评 现在 仍然可以手动触发。"
+  },
+  "sessdata": {
+    "description": "B站 SESSDATA",
+    "type": "string",
+    "default": "",
+    "hint": "浏览器登录 bilibili.com 后按 F12 → Application → Cookies → 复制 SESSDATA 的值。建议用小号。"
+  },
+  "bili_jct": {
+    "description": "B站 bili_jct",
+    "type": "string",
+    "default": "",
+    "hint": "同一个 Cookie 列表里的 bili_jct，发评论时当 csrf 用。和 SESSDATA 必须是同一个账号。"
+  },
+  "friends": {
+    "description": "@ 谁",
+    "type": "string",
+    "default": "",
+    "hint": "朋友的 B站昵称，用逗号分隔，例如：张三,李四。必须和对方当前昵称完全一致，拼错就只是纯文本。"
+  },
+  "notify_umo": {
+    "description": "通知会话",
+    "type": "string",
+    "default": "",
+    "hint": "发完评论后往哪个会话说一声。在目标群里发 /爱评 UMO 取这一串。留空则不通知。"
+  },
+  "rounds_min": {
+    "description": "每天最少几轮",
+    "type": "int",
+    "default": 3,
+    "hint": "和「每天最多几轮」一起决定当天随机次数。带 @ 的评论发多了容易被风控。"
+  },
+  "rounds_max": {
+    "description": "每天最多几轮",
+    "type": "int",
+    "default": 5,
+    "hint": "超过 5 不建议。"
+  },
+  "active_start_hour": {
+    "description": "活跃时段起始（整点）",
+    "type": "int",
+    "default": 9,
+    "hint": "0-23。夜里不跑，看起来更像人。"
+  },
+  "active_end_hour": {
+    "description": "活跃时段结束（整点）",
+    "type": "int",
+    "default": 23,
+    "hint": "0-23，必须晚于起始。"
+  },
+  "min_play": {
+    "description": "播放量下限",
+    "type": "int",
+    "default": 500,
+    "hint": "低于这个数多半是没人看的废片，评论区也没人，@ 出去像自言自语。"
+  },
+  "max_play": {
+    "description": "播放量上限",
+    "type": "int",
+    "default": 200000,
+    "hint": "高于这个数是全网刷过的烂梗。想更冷门就调小，例如 50000。"
+  },
+  "max_days_old": {
+    "description": "只要多少天内发布的",
+    "type": "int",
+    "default": 30,
+    "hint": "老视频评论区早就凉了，没人会看到你的 @。"
+  },
+  "keywords": {
+    "description": "自定义关键词",
+    "type": "string",
+    "default": "",
+    "hint": "逗号分隔。填了就只用这些词搜索，不再用内置池（离谱/抽象/整活/未解之谜等）；留空走内置池。"
+  },
+  "provider_id": {
+    "description": "写锐评用的模型",
+    "type": "string",
+    "default": "",
+    "hint": "填 AstrBot 里的模型 ID。留空用第一个已加载的对话模型。"
+  },
+  "model_timeout_seconds": {
+    "description": "模型超时（秒）",
+    "type": "int",
+    "default": 60,
+    "hint": "写一句十个字的话，正常几秒就回。超时这轮直接跳过，不重试。"
+  },
+  "dry_run": {
+    "description": "预览模式",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后只选片和写评，不真的发评论，也不通知。第一次部署时建议先开一天看看效果。"
+  }
+}
