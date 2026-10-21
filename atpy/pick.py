@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import random
+import re
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -67,8 +68,43 @@ class 门槛:
     最短标题: int = 6
 
 
-# 搜索词再怪也会捞到这类东西，评一句就等着被举报。
-标题禁忌 = ("代孕", "赌博", "博彩", "约炮", "加微信", "私加", "引流", "刷单")
+# 搜索词再怪也会捞到这几类东西：前一组评一句就等着被举报，后一组是
+# `totalrank` 排序下混得很凶的网文与短剧推广——标题里塞满"练气""赘婿"
+# "横行天下"，点进去是几分钟的读书广告，锐评它没有任何意义。
+标题禁忌 = (
+    "代孕",
+    "赌博",
+    "博彩",
+    "约炮",
+    "加微信",
+    "私加",
+    "引流",
+    "刷单",
+    "练气",
+    "筑基",
+    "仙帝",
+    "仙尊",
+    "赘婿",
+    "龙王",
+    "大夏",
+    "横行天下",
+    "打遍",
+    "无敌手",
+    "穿越成",
+    "重生之",
+    "全文完结",
+)
+
+# 光靠词表挡不住短剧：标题会写成「xxx 第1-55集 超清中字（全）」，
+# 前缀千变万化，能认的只有集数格式和那几句固定后缀。
+标题禁忌式 = (
+    re.compile(r"第\s*\d+\s*[-~—至]\s*\d+\s*集"),
+    re.compile(r"第\s*\d+\s*集\s*全"),
+    re.compile(r"超清中字"),
+    re.compile(r"1\s*[-~—]\s*\d+\s*集全"),
+    # AI 剧集用 EP01 这种写法，逃过上面几条。
+    re.compile(r"EP\s*\d+", re.IGNORECASE),
+)
 
 
 def 抽关键词(随机源: random.Random, 自定义: Iterable[str] = ()) -> str:
@@ -99,6 +135,8 @@ def 过滤(
         if len(标题) < 关.最短标题:
             continue
         if any(词 in 标题 for 词 in 标题禁忌):
+            continue
+        if any(式.search(标题) for 式 in 标题禁忌式):
             continue
         播放 = 视频.get("播放") or 0
         if not (关.最少播放 <= 播放 <= 关.最多播放):

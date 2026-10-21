@@ -56,7 +56,7 @@
   "min_play": {
     "description": "播放量下限",
     "type": "int",
-    "default": 500,
+    "default": 10000,
     "hint": "低于这个数多半是没人看的废片，评论区也没人，@ 出去像自言自语。"
   },
   "max_play": {

@@ -36,7 +36,7 @@
 | `notify_umo` | 发完往哪个会话说一声。在目标群发 `/atpy UMO` 取这一串 |
 | `rounds_min` / `rounds_max` | 每天几轮，默认 3-5 |
 | `active_start_hour` / `active_end_hour` | 活跃时段，默认 9-23 点 |
-| `min_play` / `max_play` | 播放量区间，默认 500-200000 |
+| `min_play` / `max_play` | 播放量区间，默认 10000-200000 |
 | `max_days_old` | 只要多少天内发布的，默认 30 天 |
 | `keywords` | 自定义搜索词，逗号分隔。填了就只用这些词 |
 | `provider_id` | 写锐评用哪个模型，留空用第一个已加载的 |
