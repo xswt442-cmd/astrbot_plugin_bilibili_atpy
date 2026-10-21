@@ -3,7 +3,7 @@
     "description": "启用后台定时",
     "type": "bool",
     "default": true,
-    "hint": "关掉后不再自动跑，但 /爱评 现在 仍然可以手动触发。"
+    "hint": "关掉后不再自动跑，但 /atpy 现在 仍然可以手动触发。"
   },
   "sessdata": {
     "description": "B站 SESSDATA",
@@ -27,7 +27,7 @@
     "description": "通知会话",
     "type": "string",
     "default": "",
-    "hint": "发完评论后往哪个会话说一声。在目标群里发 /爱评 UMO 取这一串。留空则不通知。"
+    "hint": "发完评论后往哪个会话说一声。在目标群里发 /atpy UMO 取这一串。留空则不通知。"
   },
   "rounds_min": {
     "description": "每天最少几轮",

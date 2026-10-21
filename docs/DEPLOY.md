@@ -41,16 +41,16 @@
 5. 看加载结果：
 
    ```sh
-   ssh tx-z01 "sudo docker logs --since 3m astrbot 2>&1 | grep -iE 'atpy|爱评'"
+   ssh tx-z01 "sudo docker logs --since 3m astrbot 2>&1 | grep -iE 'atpy'"
    ```
 
    正常时有这四行：
 
    ```
    Loading plugin astrbot_plugin_bilibili_atpy ...
-   Plugin astrbot_plugin_bilibili_atpy (v0.1.0) by xswt442-cmd: ...
-   [爱评] 后台调度已启动：每天 3-5 轮，9-23 点之间
-   [爱评] 今天排了 N 轮：18:33、22:41
+   Plugin astrbot_plugin_bilibili_atpy (v0.1.1) by xswt442-cmd: ...
+   [atpy] 后台调度已启动：每天 3-5 轮，9-23 点之间
+   [atpy] 今天排了 N 轮：18:33、22:41
    ```
 
    排的轮数可能少于配置值：当前时间之前的分段会被跳过，不补跑。

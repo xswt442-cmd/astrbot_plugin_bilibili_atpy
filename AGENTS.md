@@ -7,7 +7,7 @@
 
 - 包内一律用相对导入。插件目录被 AstrBot 当成包加载，顶层包名在容器里
   import 不到。
-- 指令全在 `爱评` 指令组下（`/爱评 现在`），不占用通用名字。
+- 指令全在 `atpy` 指令组下（`/atpy 现在`），不占用通用名字。
 - `requirements.txt` **手写**，理由见 `docs/RELEASING.md`。
 - 网络请求只用 `aiohttp`。
 - 持久化数据放 AstrBot 的 `data/plugin_data/astrbot_plugin_bilibili_atpy/`，

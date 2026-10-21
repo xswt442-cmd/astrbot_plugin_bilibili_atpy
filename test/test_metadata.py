@@ -80,3 +80,15 @@ def test_仓库名与插件名一致():
     匹配 = re.search(r"^name:\s*(\S+)", _元数据(), re.MULTILINE)
     assert 匹配
     assert 匹配.group(1) == 仓库根.name, f"name 是 {匹配.group(1)}，目录是 {仓库根.name}"
+
+
+def test_显示名与指令组名一致():
+    """显示名改了但指令组没改，用户会照显示名去敲指令，然后没反应。"""
+    文本 = (仓库根 / "main.py").read_text(encoding="utf-8")
+    组名 = re.search(r'^_组名 = "([^"]+)"', 文本, re.MULTILINE)
+    assert 组名, "main.py 里找不到 _组名"
+
+    显示 = re.search(r"^display_name:\s*(\S+)", _元数据(), re.MULTILINE)
+    assert 显示, "metadata.yaml 里找不到 display_name"
+
+    assert 组名.group(1) == 显示.group(1), f"指令是 /{组名.group(1)}，显示名是 {显示.group(1)}"

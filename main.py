@@ -1,4 +1,4 @@
-"""爱评：每天随机几轮，从B站捞一个怪视频，@朋友，留一句十字以内的锐评。
+"""atpy：每天随机几轮，从B站捞一个怪视频，@朋友，留一句十字以内的锐评。
 
 跟爱瓦 / 爱农 / 爱完美不同，这个插件不响应用户指令为主——它的主循环是
 后台定时任务，指令只是用来手动触发和查状态。
@@ -27,7 +27,7 @@ from .atpy.bili import B站客户端, 接口错误
 from .atpy.store import 记录簿
 
 _插件名 = "astrbot_plugin_bilibili_atpy"
-_组名 = "爱评"
+_组名 = "atpy"
 
 _帮助文本 = f"""／{_组名} 现在    立刻跑一轮（会真的发评论）
 ／{_组名} 预览    只生成不发，看看这一轮会发什么
@@ -59,7 +59,7 @@ def _拆分(原串: str) -> list[str]:
     return [段.strip() for 段 in re.split(r"[,，、]", 原串 or "") if 段.strip()]
 
 
-class 爱评(Star):
+class Atpy(Star):
     def __init__(self, context: Context, config: AstrBotConfig) -> None:
         super().__init__(context)
         self.config = config
