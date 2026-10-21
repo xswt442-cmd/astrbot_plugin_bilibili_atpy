@@ -247,6 +247,15 @@ class Atpy(Star):
                 logger.warning(f"[{_组名}] {错}")
                 return {"成功": False, "原因": str(错), **结果}
 
+            # 顺手赞一下收一下。这两步失败不影响评论已经发出去的事实，
+            # 所以只记日志，不改这一轮的成败。
+            for 动作, 调用 in (("点赞", self._客户端.点赞), ("收藏", self._客户端.收藏)):
+                try:
+                    await 调用(会话, int(视频["aid"]))
+                except (接口错误, aiohttp.ClientError) as 错:
+                    logger.warning(f"[{_组名}] {动作}没成：{错}")
+                await asyncio.sleep(0.5)
+
         self._记录簿.追加(
             {
                 "bvid": 视频.get("bvid", ""),

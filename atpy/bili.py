@@ -23,6 +23,9 @@ import aiohttp
 搜索接口 = "https://api.bilibili.com/x/web-interface/wbi/search/type"
 详情接口 = "https://api.bilibili.com/x/web-interface/view"
 发评论接口 = "https://api.bilibili.com/x/v2/reply/add"
+点赞接口 = "https://api.bilibili.com/x/v2/view/like"
+收藏夹列表接口 = "https://api.bilibili.com/x/v3/fav/folder/created/list-all"
+收藏接口 = "https://api.bilibili.com/x/v3/fav/resource/deal"
 
 # WBI 签名用的重排表，B站前端固定值。
 混淆表 = [
@@ -138,6 +141,9 @@ class B站客户端:
         self._过期时间 = 0.0
         self._图片密钥 = ""
         self._子密钥 = ""
+        # 点赞收藏要 mid 和默认收藏夹 id，取一次就够，跨轮复用。
+        self._mid = 0
+        self._收藏夹 = ""
 
     def _饼干(self) -> str:
         return f"SESSDATA={self._sessdata}; bili_jct={self._bili_jct}"
@@ -290,3 +296,57 @@ class B站客户端:
             原因 = 评论错误码.get(码) or 载荷.get("message") or "未知原因"
             raise 接口错误(f"发评论失败 code={码}：{原因}")
         return int(((载荷.get("data") or {}).get("rpid")) or 0)
+
+    async def _提交(
+        self,
+        会话: aiohttp.ClientSession,
+        地址: str,
+        数据: dict[str, Any],
+        说明: str,
+    ) -> dict[str, Any]:
+        """带 csrf 的写操作。非 0 业务码一律翻成 `接口错误`。"""
+        async with 会话.post(
+            地址,
+            data={**数据, "csrf": self._bili_jct},
+            headers=self._请求头(),
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as 响应:
+            状态 = 响应.status
+            文本 = await 响应.text()
+        载荷 = 解析返回体(文本, 状态, 地址)
+        码 = 载荷.get("code")
+        if 码 != 0:
+            raise 接口错误(f"{说明}失败 code={码}：{载荷.get('message') or '未知原因'}")
+        return 载荷
+
+    async def _我的mid(self, 会话: aiohttp.ClientSession) -> int:
+        if self._mid:
+            return self._mid
+        载荷 = await self._取(会话, 导航接口, {})
+        mid = (载荷.get("data") or {}).get("mid")
+        if not mid:
+            raise 接口错误("登录态失效，导航接口没返回 mid")
+        self._mid = int(mid)
+        return self._mid
+
+    async def _默认收藏夹(self, 会话: aiohttp.ClientSession) -> str:
+        """取账号下第一个收藏夹。列表按创建时间排，第一个就是默认的。"""
+        if self._收藏夹:
+            return self._收藏夹
+        载荷 = await self._取(会话, 收藏夹列表接口, {"up_mid": await self._我的mid(会话)})
+        列表 = (载荷.get("data") or {}).get("list") or []
+        if not 列表:
+            raise 接口错误("账号下没有收藏夹，建一个再试")
+        self._收藏夹 = str(列表[0]["id"])
+        return self._收藏夹
+
+    async def 点赞(self, 会话: aiohttp.ClientSession, aid: int) -> None:
+        await self._提交(会话, 点赞接口, {"aid": aid, "like": 1}, "点赞")
+
+    async def 收藏(self, 会话: aiohttp.ClientSession, aid: int) -> None:
+        await self._提交(
+            会话,
+            收藏接口,
+            {"rid": aid, "type": 2, "add_media_ids": await self._默认收藏夹(会话)},
+            "收藏",
+        )
