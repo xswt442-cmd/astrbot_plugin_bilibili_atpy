@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from functools import reduce
 from typing import Any
@@ -104,7 +105,30 @@ import aiohttp
 
 
 class 接口错误(RuntimeError):
-    """B站返回了非 0 的业务码。"""
+    """B站返回了非 0 的业务码，或者干脆没返回 JSON。"""
+
+
+def 解析返回体(文本: str, 状态: int, 地址: str) -> dict[str, Any]:
+    """把 HTTP 响应翻成字典，翻不动就抛 `接口错误`。
+
+    风控命中时 B站回的是 HTML 而不是 JSON（412），直接 `.json()` 会抛
+    `JSONDecodeError`——那不是 `接口错误`，会一路冒到调用方把整轮打崩。
+    所以状态码和解析失败都在这里收口，调用方只需要认 `接口错误` 一种。
+    """
+    if 状态 == 412:
+        raise 接口错误("B站返回 412，触发风控。隔几小时再试，或换小号。")
+    if 状态 != 200:
+        raise 接口错误(f"{地址} 返回 HTTP {状态}")
+
+    try:
+        载荷 = json.loads(文本)
+    except json.JSONDecodeError as 错:
+        # 截一段原文，能看出是验证页还是别的，又不至于刷屏。
+        raise 接口错误(f"{地址} 返回的不是 JSON：{文本[:80]!r}") from 错
+
+    if not isinstance(载荷, dict):
+        raise 接口错误(f"{地址} 返回体不是对象")
+    return 载荷
 
 
 class B站客户端:
@@ -137,10 +161,9 @@ class B站客户端:
         async with 会话.get(
             地址, params=参数, headers=self._请求头(), timeout=aiohttp.ClientTimeout(total=15)
         ) as 响应:
-            载荷 = await 响应.json(content_type=None)
-        if not isinstance(载荷, dict):
-            raise 接口错误(f"返回体不是对象：{响应.status}")
-        return 载荷
+            状态 = 响应.status
+            文本 = await 响应.text()
+        return 解析返回体(文本, 状态, 地址)
 
     async def _签名(self, 会话: aiohttp.ClientSession, 参数: dict[str, Any]) -> dict[str, Any]:
         """给 wbi 接口补 wts 与 w_rid。密钥约一天一换，缓存 6 小时。"""
