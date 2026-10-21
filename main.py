@@ -104,15 +104,15 @@ class Atpy(Star):
         self._只预览 = _开关(config, "dry_run", False)
         self._门槛 = pick.门槛(
             最少播放=_整数(config, "min_play", 10000),
-            最多播放=_整数(config, "max_play", 200000),
-            最多几天前=_整数(config, "max_days_old", 30),
+            最多播放=_整数(config, "max_play", 5000000),
+            最多几天前=_整数(config, "max_days_old", 0),
         )
 
         if _开关(config, "enabled", True):
             self._后台任务 = asyncio.create_task(self._调度())
             logger.info(
-                f"[{_组名}] 后台调度已启动：每天 {_整数(config, 'rounds_min', 3)}"
-                f"-{_整数(config, 'rounds_max', 5)} 轮，"
+                f"[{_组名}] 后台调度已启动：每天 {_整数(config, 'rounds_min', 1)}"
+                f"-{_整数(config, 'rounds_max', 1)} 轮，"
                 f"{_整数(config, 'active_start_hour', 9)}-"
                 f"{_整数(config, 'active_end_hour', 23)} 点之间"
             )
@@ -133,8 +133,8 @@ class Atpy(Star):
         止 = datetime.combine(当天, 时间(hour=_整数(self.config, "active_end_hour", 23)))
         if 止 <= 起:
             return []
-        下 = _整数(self.config, "rounds_min", 3)
-        上 = _整数(self.config, "rounds_max", 5)
+        下 = _整数(self.config, "rounds_min", 1)
+        上 = _整数(self.config, "rounds_max", 1)
         轮数 = self._随机.randint(min(下, 上), max(下, 上))
         跨度 = (止 - 起).total_seconds()
         现在 = time.time()
@@ -207,11 +207,12 @@ class Atpy(Star):
 
         已发过 = self._记录簿.已发过的()
         自定义 = _拆分(_文本(self.config, "keywords"))
+        类别 = pick.按天取类别(date.today())
 
         async with aiohttp.ClientSession() as 会话:
-            视频 = await self._找片(会话, 已发过, 自定义)
+            视频 = await self._找片(会话, 已发过, 自定义, 类别)
             if 视频 is None:
-                return {"成功": False, "原因": "搜了三个关键词都没找到合适的片子"}
+                return {"成功": False, "原因": f"「{类别}」这条线三个词都没找到合适的片子"}
 
             await self._补简介(会话, 视频)
             锐评 = await self._写评(视频)
@@ -219,7 +220,12 @@ class Atpy(Star):
                 return {"成功": False, "原因": "模型没给出能用的锐评", "视频": 视频}
 
             文本 = f"{' '.join('@' + 名 for 名 in self._朋友)} {锐评}".strip()
-            结果: dict[str, Any] = {"视频": 视频, "锐评": 锐评, "评论": 文本}
+            结果: dict[str, Any] = {
+                "视频": 视频,
+                "锐评": 锐评,
+                "评论": 文本,
+                "类别": 类别,
+            }
 
             if not 真的要发:
                 结果["成功"] = True
@@ -256,13 +262,14 @@ class Atpy(Star):
         会话: aiohttp.ClientSession,
         已发过: set[str],
         自定义: list[str],
+        类别: str,
     ) -> dict[str, Any] | None:
-        """最多换三个关键词。每个词只搜一次，不去翻页。"""
+        """在今天的类别里最多换三个关键词。每个词只搜一次，不去翻页。"""
         for 第几次 in range(3):
             if 第几次:
                 # 连着打搜索接口容易吃 412，隔一两秒再问。
                 await asyncio.sleep(self._随机.uniform(1.0, 2.5))
-            词 = pick.抽关键词(self._随机, 自定义)
+            词 = pick.抽关键词(self._随机, 自定义, 类别)
             try:
                 候选 = await self._客户端.搜索视频(会话, 词, 条数=50, 排序="totalrank")
             except (接口错误, aiohttp.ClientError) as 错:
@@ -270,7 +277,7 @@ class Atpy(Star):
                 continue
             选中的 = pick.挑一个(self._随机, 候选, 已发过, self._门槛)
             if 选中的:
-                logger.info(f"[{_组名}] 选中「{词}」：{选中的.get('标题')}")
+                logger.info(f"[{_组名}] 「{类别}」选中「{词}」：{选中的.get('标题')}")
                 return 选中的
             logger.info(f"[{_组名}] 「{词}」搜到 {len(候选)} 条，都不合格")
         return None
