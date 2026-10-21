@@ -50,7 +50,7 @@ async def 主() -> int:
         print("所有结果播放量都是 0，totalrank 可能已失效。")
         return 1
 
-    最新 = min(条["发布"] for 条 in 结果)
+    最新 = max(条["发布"] for 条 in 结果)
     最近天数 = (time.time() - 最新) / 86400
     print(f"{len(结果)} 条结果，播放 {播放[0]}-{播放[-1]}，最新一条 {最近天数:.0f} 天前")
 
