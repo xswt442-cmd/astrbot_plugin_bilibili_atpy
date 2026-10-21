@@ -17,23 +17,24 @@ from typing import Any
 
 import aiohttp
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, MessageChain
-from astrbot.api.event.filter import command, llm_tool
+from astrbot.api.event import AstrMessageEvent, MessageChain, MessageEventResult
+from astrbot.api.event.filter import command_group, custom_filter, llm_tool
 from astrbot.api.star import Context, Star
-from astrbot.core.star.filter.command import GreedyStr
+from astrbot.core.star.filter.custom_filter import CustomFilter
 
 from .atpy import critic, pick
 from .atpy.bili import B站客户端, 接口错误
 from .atpy.store import 记录簿
+from .atpy.兜底 import 以组名开头, 取落空参数, 帮助文本, 是否落空, 落空提示
 
 _插件名 = "astrbot_plugin_bilibili_atpy"
 _组名 = "atpy"
 
-_帮助文本 = f"""／{_组名} 现在    立刻跑一轮（会真的发评论）
-／{_组名} 预览    只生成不发，看看这一轮会发什么
-／{_组名} 最近    最近发过的几条
-／{_组名} 状态    登录态、今日剩余排期
-／{_组名} UMO     取当前会话标识，填进「通知会话」配置"""
+# QQ 官方适配器在 `@机器人` 唤醒时 `wake_prefix = ""`，**不剥掉 message_str
+# 里的 `/`**（只有 startswith 分支才剥）。于是 message_str 仍是 `/atpy 状态`，
+# 组名 `atpy` 匹配不上，整条指令静默失败、消息进模型。加一个带斜杠的别名，
+# 两种写法都能进。
+_组别名 = {f"/{_组名}"}
 
 
 def _文本(配置: AstrBotConfig, 键: str, 默认: str = "") -> str:
@@ -59,7 +60,37 @@ def _拆分(原串: str) -> list[str]:
     return [段.strip() for 段 in re.split(r"[,，、]", 原串 or "") if 段.strip()]
 
 
+class _落空兜底(CustomFilter):
+    """`/atpy <不是子命令>` 时自己接住，别让消息流到模型手里。
+
+    `filter` 的返回值语义是「这条消息我管不管」，**不是**「我有没有命中」——
+    `CommandGroupFilter.filter` 里 `if not self.custom_filter_ok(...): return False`，
+    返回 False 会把整个指令组毙掉。所以这里恒返回 True：命中就自己给结果并
+    `stop_event()`，没命中就放行给子指令。写成「命中返回 False」会让
+    `/atpy 状态` 这种正常指令完全没反应。
+    """
+
+    def filter(self, event: AstrMessageEvent, cfg: AstrBotConfig) -> bool:
+        文本 = getattr(event, "message_str", "") or ""
+        # 这条过滤器对**每一条消息**都会跑（CommandGroupFilter 先跑
+        # custom_filter_ok 再检查组名），所以第一件事是判断关不关我事。
+        if not 以组名开头(文本, _组名):
+            return True
+        logger.debug(f"[{_组名}] 指令命中 message_str={文本!r}")
+        if 是否落空(文本, _组名):
+            event.set_result(MessageEventResult().message(落空提示(取落空参数(文本, _组名))))
+            event.stop_event()
+        return True
+
+
 class Atpy(Star):
+    # 别写成 `self.atpy.add_custom_filter(...)`——`self.atpy` 是
+    # `RegisteringCommandable`，没有那个方法，加载时会 AttributeError。
+    @custom_filter(_落空兜底)
+    @command_group(_组名, alias=_组别名)
+    def atpy(self):
+        """在B站评论区给朋友整活。指令都在这个组下，不占用通用名字。"""
+
     def __init__(self, context: Context, config: AstrBotConfig) -> None:
         super().__init__(context)
         self.config = config
@@ -305,55 +336,50 @@ class Atpy(Star):
 
     # ── 指令 ──
 
-    @command(_组名)
-    async def 指令(self, event: AstrMessageEvent, 动作: GreedyStr = ""):
-        """手动跑一轮，或查状态。"""
-        参数 = str(动作 or "").strip()
-        if not 参数:
-            event.stop_event()
-            yield event.plain_result(_帮助文本)
-            return
-
-        if 参数 in {"现在", "跑"}:
-            event.stop_event()
-            结果 = await self._跑一轮()
-            yield event.plain_result(self._结果文本(结果))
-            return
-
-        if 参数 == "预览":
-            event.stop_event()
-            结果 = await self._跑一轮(只预览=True)
-            yield event.plain_result(self._结果文本(结果))
-            return
-
-        if 参数 == "最近":
-            event.stop_event()
-            记录 = self._记录簿.最近(5)
-            if not 记录:
-                yield event.plain_result("还没发过。")
-                return
-            行 = [
-                f"{datetime.fromtimestamp(条['时间']):%m-%d %H:%M} {条.get('标题', '')}\n"
-                f"　{条.get('评论', '')}"
-                for 条 in 记录
-            ]
-            yield event.plain_result("\n".join(行))
-            return
-
-        if 参数 == "状态":
-            event.stop_event()
-            yield event.plain_result(self._状态文本())
-            return
-
-        if 参数.upper() == "UMO":
-            event.stop_event()
-            yield event.plain_result(
-                f"{event.unified_msg_origin}\n把这行填进插件配置的「通知会话」。"
-            )
-            return
-
+    @atpy.command("现在", alias={"跑"})
+    async def 现在(self, event: AstrMessageEvent):
+        """立刻跑一轮。会真的发评论。"""
         event.stop_event()
-        yield event.plain_result(_帮助文本)
+        yield event.plain_result(self._结果文本(await self._跑一轮()))
+
+    @atpy.command("预览")
+    async def 预览(self, event: AstrMessageEvent):
+        """只选片和写评，不发评论。"""
+        event.stop_event()
+        yield event.plain_result(self._结果文本(await self._跑一轮(只预览=True)))
+
+    @atpy.command("最近")
+    async def 最近(self, event: AstrMessageEvent):
+        """最近发过的五条。"""
+        event.stop_event()
+        记录 = self._记录簿.最近(5)
+        if not 记录:
+            yield event.plain_result("还没发过。")
+            return
+        行 = [
+            f"{datetime.fromtimestamp(条['时间']):%m-%d %H:%M} {条.get('标题', '')}\n"
+            f"　{条.get('评论', '')}"
+            for 条 in 记录
+        ]
+        yield event.plain_result("\n".join(行))
+
+    @atpy.command("状态")
+    async def 状态(self, event: AstrMessageEvent):
+        """登录态、今日剩余档期。"""
+        event.stop_event()
+        yield event.plain_result(self._状态文本())
+
+    @atpy.command("UMO", alias={"umo"})
+    async def 取UMO(self, event: AstrMessageEvent):
+        """取当前会话标识，填进「通知会话」配置。"""
+        event.stop_event()
+        yield event.plain_result(f"{event.unified_msg_origin}\n把这行填进插件配置的「通知会话」。")
+
+    @atpy.command("帮助", alias={"help", "菜单"})
+    async def 帮助(self, event: AstrMessageEvent):
+        """列出全部指令。"""
+        event.stop_event()
+        yield event.plain_result(帮助文本(_组名))
 
     @llm_tool(name="recent_bili_critics")
     async def 查最近锐评(self, event: AstrMessageEvent) -> str:
