@@ -34,6 +34,22 @@
 `_落空兜底.filter` 的所有出口必须 `return True`——它的语义是「这条消息我管
 不管」，不是「我命中没有」，返回 False 会把整个指令组毙掉。
 
+## 指令没反应，先查白名单
+
+线上踩过的第二个坑，比第一个难查得多：插件加载成功、handler 全部注册、
+`enabled=True`、`activated=True`、没有任何禁用或冲突记录，但发 `/atpy 状态`
+一点反应没有，消息直接进模型。
+
+原因是 `abconf` 里的 `plugin_set` 是**白名单**，不在名单里的插件，所有
+`AdapterMessageEvent` handler 在 `waking_check` 阶段就被跳过，连正则过滤器
+都不执行。`cmd_config.json` 里的 `["*"]` 会被 abconf 覆盖。
+
+新装插件后必须把它加进对应 bot 的 abconf，步骤见 `docs/DEPLOY.md`。
+
+排查顺序按这个来，别再从代码猜：先看 abconf 的 `plugin_set` → 再看
+`star_handlers_registry` 里 handler 的 `enabled` / `activated` → 最后才看
+filter 逻辑。
+
 ## 结构
 
 ```

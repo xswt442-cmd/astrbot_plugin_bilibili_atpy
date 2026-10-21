@@ -69,3 +69,40 @@ ssh tx-z01 "sudo rm /opt/qq-ai/astrbot-data/plugin_data/astrbot_plugin_bilibili_
 ```
 
 然后重启容器，会按新配置重排。
+
+## 新装插件必须进白名单，否则指令一条都不响应
+
+这一步漏了会非常难查：插件加载成功、日志里 handler 全部注册、`enabled=True`、
+`activated=True`、`command_configs` 里也没有禁用记录，但发 `/atpy 状态` 完全没
+反应，消息直接落进模型让它瞎编。
+
+原因是每个 bot 的独立配置里有 `plugin_set` 白名单：
+
+```
+/opt/qq-ai/astrbot-data/config/abconf_<uuid>.json
+```
+
+`waking_check` 用这份名单过滤 handler，不在名单里的插件**所有
+`AdapterMessageEvent` handler 都会被跳过**，连正则过滤器都不会执行。
+
+`cmd_config.json` 里的 `plugin_set` 是 `["*"]` 没用——`abconf` 会覆盖它。
+
+当前 `lg1(qq_official)` 对应 `abconf_94be3002-cfcd-40ba-8d4a-1b06d8a90e01.json`，
+映射关系在数据库 `preferences` 表的 `umop_config_routing` 里查。
+
+修法二选一：在 WebUI 的配置页勾上插件（推荐），或直接改 json：
+
+```sh
+ssh tx-z01 "sudo python3 - <<'EOF'
+import json
+p='/opt/qq-ai/astrbot-data/config/abconf_94be3002-cfcd-40ba-8d4a-1b06d8a90e01.json'
+d=json.load(open(p,encoding='utf-8-sig'))
+d['plugin_set'].append('astrbot_plugin_bilibili_atpy')
+json.dump(d,open(p,'w',encoding='utf-8-sig'),ensure_ascii=False,indent=2)
+EOF"
+```
+
+改完重启容器才生效。文件带 BOM，读写都要 `utf-8-sig`，否则 AstrBot 读不回来。
+
+以后换 bot、加 bot，各自的 abconf 都要单独加一次。
+
