@@ -229,7 +229,7 @@ class Atpy(Star):
 
             try:
                 rpid = await self._客户端.发评论(会话, int(视频["aid"]), 文本)
-            except 接口错误 as 错:
+            except (接口错误, aiohttp.ClientError) as 错:
                 logger.warning(f"[{_组名}] {错}")
                 return {"成功": False, "原因": str(错), **结果}
 
@@ -306,6 +306,11 @@ class Atpy(Star):
             )
         except asyncio.TimeoutError:
             logger.warning(f"[{_组名}] 模型超时")
+            return ""
+        except Exception as 错:
+            # 上游 429、鉴权失效、网络中断都会从这里出。这一轮废掉即可，
+            # 别让它冒到调度循环里显得像插件崩了。
+            logger.warning(f"[{_组名}] 模型调用失败：{type(错).__name__} {错}")
             return ""
         return (getattr(回复, "completion_text", "") or "").strip()
 
