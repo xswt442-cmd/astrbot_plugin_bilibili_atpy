@@ -2,7 +2,7 @@ name: astrbot_plugin_bilibili_atpy
 display_name: atpy
 short_desc: 每天刷几个怪视频，@朋友，留一句锐评。
 desc: 用你自己的B站账号，每天在活跃时段随机跑 3-5 轮，从搜索里挑一个冷门怪视频，让模型写十字以内的锐评，@ 几个朋友发在评论区，并把结果同步到 QQ 群。
-version: v0.1.1
+version: v0.1.2
 author: xswt442-cmd
 repo: https://github.com/xswt442-cmd/astrbot_plugin_bilibili_atpy
 astrbot_version: ">=4.16,<5"
