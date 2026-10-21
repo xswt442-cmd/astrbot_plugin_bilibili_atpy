@@ -108,6 +108,14 @@ class Atpy(Star):
             最多几天前=_整数(config, "max_days_old", 0),
         )
 
+        # 会话标识是「平台:群类型:群号」三段。少一段 send_message 找不到会话，
+        # 通知被静默丢掉，日志里只有一行 warning，很难发现。
+        if self._通知会话 and self._通知会话.count(":") < 2:
+            logger.warning(
+                f"[{_组名}] notify_umo 不像完整会话标识：{self._通知会话}。"
+                f"应该是 `平台:群类型:群号`，在群里发 /{_组名} UMO 取整串。"
+            )
+
         if _开关(config, "enabled", True):
             self._后台任务 = asyncio.create_task(self._调度())
             logger.info(
@@ -385,7 +393,10 @@ class Atpy(Star):
     async def 取UMO(self, event: AstrMessageEvent):
         """取当前会话标识，填进「通知会话」配置。"""
         event.stop_event()
-        yield event.plain_result(f"{event.unified_msg_origin}\n把这行填进插件配置的「通知会话」。")
+        yield event.plain_result(
+            f"{event.unified_msg_origin}\n"
+            f"整行复制（含开头的平台名和两段冒号），填进插件配置的「通知会话」。"
+        )
 
     @atpy.command("帮助", alias={"help", "菜单"})
     async def 帮助(self, event: AstrMessageEvent):
