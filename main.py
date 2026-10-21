@@ -103,7 +103,7 @@ class Atpy(Star):
         self._通知会话 = _文本(config, "notify_umo")
         self._只预览 = _开关(config, "dry_run", False)
         self._门槛 = pick.门槛(
-            最少播放=_整数(config, "min_play", 500),
+            最少播放=_整数(config, "min_play", 10000),
             最多播放=_整数(config, "max_play", 200000),
             最多几天前=_整数(config, "max_days_old", 30),
         )
@@ -264,7 +264,7 @@ class Atpy(Star):
                 await asyncio.sleep(self._随机.uniform(1.0, 2.5))
             词 = pick.抽关键词(self._随机, 自定义)
             try:
-                候选 = await self._客户端.搜索视频(会话, 词, 条数=30, 排序="totalrank")
+                候选 = await self._客户端.搜索视频(会话, 词, 条数=50, 排序="totalrank")
             except (接口错误, aiohttp.ClientError) as 错:
                 logger.warning(f"[{_组名}] 搜「{词}」失败：{错}")
                 continue
