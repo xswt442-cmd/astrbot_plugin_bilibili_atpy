@@ -262,7 +262,7 @@ class Atpy(Star):
         结果["成功"] = True
         结果["rpid"] = rpid
         logger.info(f"[{_组名}] 已发：{视频.get('标题')} → {文本}")
-        await self._通知(视频, 文本)
+        await self._通知(视频, 锐评)
         return 结果
 
     async def _找片(
@@ -343,12 +343,16 @@ class Atpy(Star):
             return None
         return 实例们[0]
 
-    async def _通知(self, 视频: dict[str, Any], 文本: str) -> None:
-        """在配置的会话里说一句，让群里知道它刚才干了什么。"""
+    async def _通知(self, 视频: dict[str, Any], 锐评: str) -> None:
+        """在配置的会话里说一句，让群里知道它刚才干了什么。
+
+        只说艾特了几个人，不列名单——QQ 会把 `@名字` 当 at 语法重新渲染，
+        名单里的英文名会被包成 `@//xxx/`，看着像发错了。
+        """
         if not self._通知会话:
             return
         链接 = f"https://www.bilibili.com/video/{视频.get('bvid', '')}"
-        消息 = f"刚刷到一个：{视频.get('标题', '')}\n{文本}\n{链接}"
+        消息 = f"刚刷到一个：{视频.get('标题', '')}\n艾特了 {len(self._朋友)} 个人｜{锐评}\n{链接}"
         try:
             await self.context.send_message(self._通知会话, MessageChain().message(消息))
         except Exception as 错:
@@ -425,10 +429,11 @@ class Atpy(Star):
 
     def _结果文本(self, 结果: dict[str, Any]) -> str:
         if 结果.get("成功"):
+            视频 = 结果["视频"]
             行 = [
-                f"发了：{结果['视频'].get('标题', '')}",
-                f"评论：{结果.get('评论', '')}",
-                f"https://www.bilibili.com/video/{结果['视频'].get('bvid', '')}",
+                f"发了：{视频.get('标题', '')}",
+                f"艾特了 {len(self._朋友)} 个人｜{结果.get('锐评', '')}",
+                f"https://www.bilibili.com/video/{视频.get('bvid', '')}",
             ]
             if 结果.get("原因"):
                 行.append(结果["原因"])
