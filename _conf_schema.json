@@ -3,96 +3,96 @@
     "description": "启用后台定时",
     "type": "bool",
     "default": true,
-    "hint": "关掉后不再自动跑，但 /atpy 现在 仍然可以手动触发。"
+    "hint": "关掉不自动跑，/atpy 现在 仍能手动触发。"
   },
   "sessdata": {
     "description": "B站 SESSDATA",
     "type": "string",
     "default": "",
-    "hint": "浏览器登录 bilibili.com 后按 F12 → Application → Cookies → 复制 SESSDATA 的值。建议用小号。"
+    "hint": "登录后 F12 → Application → Cookies 复制。建议用小号。"
   },
   "bili_jct": {
     "description": "B站 bili_jct",
     "type": "string",
     "default": "",
-    "hint": "同一个 Cookie 列表里的 bili_jct，发评论时当 csrf 用。和 SESSDATA 必须是同一个账号。"
+    "hint": "同一 Cookie 列表里的 bili_jct，发评论时当 csrf。要和 SESSDATA 同账号。"
   },
   "friends": {
     "description": "@ 谁",
     "type": "string",
     "default": "",
-    "hint": "朋友的 B站昵称，用逗号分隔，例如：张三,李四。必须和对方当前昵称完全一致，拼错就只是纯文本。"
+    "hint": "B站昵称，逗号分隔。必须一字不差，拼错就只是纯文本。"
   },
   "notify_umo": {
     "description": "通知会话",
     "type": "string",
     "default": "",
-    "hint": "发完评论后往哪个会话说一声。在目标群里发 /atpy UMO 取这一串。留空则不通知。"
+    "hint": "发完往哪个会话说一声。在群里发 /atpy UMO 取整串，留空不通知。"
   },
   "rounds_min": {
-    "description": "每天最少几轮",
+    "description": "每天最少几条",
     "type": "int",
     "default": 1,
-    "hint": "和「每天最多几轮」一起决定当天随机次数。带 @ 的评论发多了容易被风控。"
+    "hint": "和上限一起决定当天的随机条数。"
   },
   "rounds_max": {
-    "description": "每天最多几轮",
+    "description": "每天最多几条",
     "type": "int",
     "default": 1,
-    "hint": "默认每天一条。想多刷几类就把上限调高，五类内容按日期轮转。"
+    "hint": "默认一条。带 @ 的评论发多了容易被风控。"
   },
   "active_start_hour": {
     "description": "活跃时段起始（整点）",
     "type": "int",
     "default": 9,
-    "hint": "0-23。夜里不跑，看起来更像人。"
+    "hint": "0-23，夜里不跑，更像真人。"
   },
   "active_end_hour": {
     "description": "活跃时段结束（整点）",
     "type": "int",
     "default": 23,
-    "hint": "0-23，必须晚于起始。"
+    "hint": "0-23，须晚于起始。"
   },
   "min_play": {
     "description": "播放量下限",
     "type": "int",
     "default": 10000,
-    "hint": "低于这个数多半是没人看的废片，评论区也没人，@ 出去像自言自语。"
+    "hint": "低于这个数多半没人看，评论区也是空的。"
   },
   "max_play": {
     "description": "播放量上限",
     "type": "int",
     "default": 5000000,
-    "hint": "高于这个数是全网刷过的烂梗。想更冷门就调小，例如 500000。"
+    "hint": "高于这个数是全网刷过的烂梗。"
   },
   "max_days_old": {
-    "description": "只要多少天内发布的",
+    "description": "只要几天内发布的",
     "type": "int",
     "default": 0,
-    "hint": "0 表示不限。老视频评论区凉了无所谓，朋友是点进去看的。"
+    "hint": "0 表示不限。"
   },
   "keywords": {
     "description": "自定义关键词",
     "type": "string",
     "default": "",
-    "hint": "逗号分隔。填了就只用这些词搜索，不再用内置池（离谱/抽象/整活/未解之谜等）；留空走内置池。"
+    "hint": "逗号分隔。填了就只用这些词，不再按内置五类轮转。"
   },
   "provider_id": {
     "description": "写锐评用的模型",
     "type": "string",
     "default": "",
-    "hint": "填 AstrBot 里的模型 ID。留空用第一个已加载的对话模型。"
+    "hint": "填 AstrBot 里的模型 ID，留空用第一个已加载的。"
   },
   "model_timeout_seconds": {
     "description": "模型超时（秒）",
     "type": "int",
     "default": 60,
-    "hint": "写一句十个字的话，正常几秒就回。超时这轮直接跳过，不重试。"
+    "hint": "超时这轮跳过，不重试。"
   },
   "dry_run": {
     "description": "预览模式",
     "type": "bool",
     "default": false,
-    "hint": "开启后只选片和写评，不真的发评论，也不通知。第一次部署时建议先开一天看看效果。"
+    "hint": "只选片和写评，不真发。第一次部署建议先开一天。"
   }
 }
