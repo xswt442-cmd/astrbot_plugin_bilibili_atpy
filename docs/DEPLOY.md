@@ -13,7 +13,7 @@
    git status --short
    ```
 
-2. 打发布包。`.gitattributes` 里的 `export-ignore` 会把 `icon/`、`test/`、`.github/`、`uv.lock` 排掉：
+2. 打发布包。`.gitattributes` 里的 `export-ignore` 会把 `test/`、`.github/`、`uv.lock` 排掉：
 
    ```sh
    git archive --format=tar --prefix=astrbot_plugin_bilibili_atpy/ -o atpy.tar HEAD

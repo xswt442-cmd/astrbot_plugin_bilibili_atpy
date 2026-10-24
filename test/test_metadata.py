@@ -99,15 +99,6 @@ def test_有图标且尺寸跟另外几个插件一致():
     assert _png尺寸(图标) == (256, 256), f"logo.png 是 {_png尺寸(图标)}，应为 256×256"
 
 
-def test_图标源图不进发布包():
-    """`icon/` 是 1MB 以上的源图，让用户装到它只会撑大包体。
-
-    `.gitattributes` 里漏掉这一行，`git archive` 会把它一起打进去。
-    """
-    属性 = (仓库根 / ".gitattributes").read_text(encoding="utf-8")
-    assert "icon/" in 属性 and "export-ignore" in 属性, ".gitattributes 没排除 icon/"
-
-
 def test_显示名与指令组名一致():
     """显示名改了但指令组没改，用户会照显示名去敲指令，然后没反应。"""
     文本 = (仓库根 / "main.py").read_text(encoding="utf-8")

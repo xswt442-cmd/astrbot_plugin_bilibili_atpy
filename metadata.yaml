@@ -6,8 +6,7 @@ version: v0.1.10
 author: xswt442-cmd
 repo: https://github.com/xswt442-cmd/astrbot_plugin_bilibili_atpy
 astrbot_version: ">=4.16,<5"
-# 图标。市场拿仓库根的 logo.png（256×256）当插件图标，
-# icon/ 是 1MB 以上的源图，.gitattributes 里排除了，不进发布包。
+# 图标。市场拿仓库根的 logo.png（256×256）当插件图标。
 # 市场分类。取值是市场自己定的那几个中文，见 docs/RELEASING.md。
 # 不填会被默认成「其他」，在插件详情页显示成 [MISSING: ...其他]。
 category: 娱乐
