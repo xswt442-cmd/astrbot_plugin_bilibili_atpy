@@ -7,6 +7,7 @@ AstrBot 从这份文件读插件信息，版本号也在里面。字段填错不
 from __future__ import annotations
 
 import re
+import struct
 from pathlib import Path
 
 仓库根 = Path(__file__).resolve().parent.parent
@@ -80,6 +81,31 @@ def test_仓库名与插件名一致():
     匹配 = re.search(r"^name:\s*(\S+)", _元数据(), re.MULTILINE)
     assert 匹配
     assert 匹配.group(1) == 仓库根.name, f"name 是 {匹配.group(1)}，目录是 {仓库根.name}"
+
+
+def _png尺寸(路径: Path) -> tuple[int, int]:
+    """读 PNG 头里的宽高。只为校验图标规格，不值得引 Pillow。"""
+    头 = 路径.read_bytes()[:24]
+    return struct.unpack(">II", 头[16:24])
+
+
+def test_有图标且尺寸跟另外几个插件一致():
+    """插件市场拿仓库根的 `logo.png` 当图标，没有就是灰底占位。
+
+    另外三个插件都是 256×256，尺寸不一致在市场列表里会被拉伸。
+    """
+    图标 = 仓库根 / "logo.png"
+    assert 图标.exists(), "缺 logo.png，市场上会显示成灰色占位"
+    assert _png尺寸(图标) == (256, 256), f"logo.png 是 {_png尺寸(图标)}，应为 256×256"
+
+
+def test_图标源图不进发布包():
+    """`icon/` 是 1MB 以上的源图，让用户装到它只会撑大包体。
+
+    `.gitattributes` 里漏掉这一行，`git archive` 会把它一起打进去。
+    """
+    属性 = (仓库根 / ".gitattributes").read_text(encoding="utf-8")
+    assert "icon/" in 属性 and "export-ignore" in 属性, ".gitattributes 没排除 icon/"
 
 
 def test_显示名与指令组名一致():

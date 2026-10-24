@@ -24,8 +24,12 @@ uv.lock linguist-generated=true
 
 # 发布时排除
 #
-# 只有开发时才用得上的东西不进包：测试、CI 配置、uv.lock。
-# `docs/` 不能排除，README 引用了那里的更新日志。
+# 插件市场从 main 拉 zip（见 docs/RELEASING.md），用户装的是这个包。
+#
+# 排除的是只有开发时才用得上的东西：图标源图、测试、CI 配置、uv.lock。
+# `logo.png` 不排除——市场拿它当插件图标。
+# `docs/` 也不能排除：README 指向那里的更新日志和部署说明。
+icon/     export-ignore
 test/     export-ignore
 .github/  export-ignore
 uv.lock   export-ignore
