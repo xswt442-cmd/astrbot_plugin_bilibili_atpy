@@ -1,10 +1,8 @@
 # 部署
 
-目标机器是 `tx-z01`（`43.142.116.197`），AstrBot 跑在 Docker Compose 里，
-插件目录挂在宿主机 `/opt/qq-ai/astrbot-data/plugins`。
+目标机器是 `tx-z01`（`43.142.116.197`），AstrBot 跑在 Docker Compose 里，插件目录挂在宿主机 `/opt/qq-ai/astrbot-data/plugins`。
 
-插件目录**不是 Git 仓库**，服务器上也没有构建环境。所以部署是把
-`git archive` 出来的发布包解压过去，不是 `git clone`。
+插件目录**不是 Git 仓库**，服务器上也没有构建环境。所以部署是把 `git archive` 出来的发布包解压过去，不是 `git clone`。
 
 ## 一次部署
 
@@ -15,8 +13,7 @@
    git status --short
    ```
 
-2. 打发布包。`.gitattributes` 里的 `export-ignore` 会把 `test/`、`.github/`、
-   `uv.lock` 排掉，包里只剩运行时要用的东西：
+2. 打发布包。`.gitattributes` 里的 `export-ignore` 会把 `icon/`、`test/`、`.github/`、`uv.lock` 排掉：
 
    ```sh
    git archive --format=tar --prefix=astrbot_plugin_bilibili_atpy/ -o atpy.tar HEAD
@@ -44,11 +41,11 @@
    ssh tx-z01 "sudo docker logs --since 3m astrbot 2>&1 | grep -iE 'atpy'"
    ```
 
-   正常时有这四行：
+   正常时是这四行：
 
    ```
    Loading plugin astrbot_plugin_bilibili_atpy ...
-   Plugin astrbot_plugin_bilibili_atpy (v0.1.1) by xswt442-cmd: ...
+   Plugin astrbot_plugin_bilibili_atpy (v0.1.9) by xswt442-cmd: ...
    [atpy] 后台调度已启动：每天 1-1 轮，9-23 点之间
    [atpy] 今天排了 N 轮：18:33、22:41
    ```
@@ -57,40 +54,23 @@
 
 ## 覆盖升级
 
-同上，`tar -x` 会覆盖同名文件。`data/plugin_data/astrbot_plugin_bilibili_atpy/`
-不在插件目录里，历史记录和排期不会被冲掉。
+同上，`tar -x` 覆盖同名文件。`data/plugin_data/astrbot_plugin_bilibili_atpy/` 不在插件目录里，历史记录和排期不会被冲掉。
 
-## 排期是当天的
-
-`plan.json` 只存当天。改活跃时段要等第二天生效；当天想立刻生效就先删掉：
+`plan.json` 只存当天。改活跃时段要等第二天生效；当天想立刻生效先删掉它再重启：
 
 ```sh
 ssh tx-z01 "sudo rm /opt/qq-ai/astrbot-data/plugin_data/astrbot_plugin_bilibili_atpy/plan.json"
 ```
 
-然后重启容器，会按新配置重排。
-
 ## 新装插件必须进白名单，否则指令一条都不响应
 
-这一步漏了会非常难查：插件加载成功、日志里 handler 全部注册、`enabled=True`、
-`activated=True`、`command_configs` 里也没有禁用记录，但发 `/atpy 状态` 完全没
-反应，消息直接落进模型让它瞎编。
+插件加载成功、handler 全部注册、`enabled=True`、`activated=True`、`command_configs` 里也没有禁用记录，但发 `/atpy 状态` 完全没反应，消息直接落进模型让它瞎编——先查这里。
 
-原因是每个 bot 的独立配置里有 `plugin_set` 白名单：
+每个 bot 的独立配置里有 `plugin_set` 白名单：`/opt/qq-ai/astrbot-data/config/abconf_<uuid>.json`。`waking_check` 用它过滤 handler，不在名单里的插件所有 `AdapterMessageEvent` handler 都会被跳过。`cmd_config.json` 里的 `["*"]` 会被 abconf 覆盖。
 
-```
-/opt/qq-ai/astrbot-data/config/abconf_<uuid>.json
-```
+当前 `lg1(qq_official)` 对应 `abconf_94be3002-cfcd-40ba-8d4a-1b06d8a90e01.json`，映射关系在数据库 `preferences` 表的 `umop_config_routing`。
 
-`waking_check` 用这份名单过滤 handler，不在名单里的插件**所有
-`AdapterMessageEvent` handler 都会被跳过**，连正则过滤器都不会执行。
-
-`cmd_config.json` 里的 `plugin_set` 是 `["*"]` 没用——`abconf` 会覆盖它。
-
-当前 `lg1(qq_official)` 对应 `abconf_94be3002-cfcd-40ba-8d4a-1b06d8a90e01.json`，
-映射关系在数据库 `preferences` 表的 `umop_config_routing` 里查。
-
-修法二选一：在 WebUI 的配置页勾上插件（推荐），或直接改 json：
+修法二选一：在 WebUI 配置页勾上插件（推荐），或直接改 json：
 
 ```sh
 ssh tx-z01 "sudo python3 - <<'EOF'
@@ -102,7 +82,6 @@ json.dump(d,open(p,'w',encoding='utf-8-sig'),ensure_ascii=False,indent=2)
 EOF"
 ```
 
-改完重启容器才生效。文件带 BOM，读写都要 `utf-8-sig`，否则 AstrBot 读不回来。
+改完重启容器才生效。文件带 BOM，读写都要 `utf-8-sig`。
 
 以后换 bot、加 bot，各自的 abconf 都要单独加一次。
-
