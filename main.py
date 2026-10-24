@@ -1,7 +1,6 @@
-"""atpy：每天随机几轮，从B站捞一个怪视频，@朋友，留一句十字以内的锐评。
+"""atpy：每天从B站捞一个视频，@朋友，留一句十字以内的锐评。
 
-跟爱瓦 / 爱农 / 爱完美不同，这个插件不响应用户指令为主——它的主循环是
-后台定时任务，指令只是用来手动触发和查状态。
+跟爱瓦 / 爱农 / 爱完美不同，主循环是后台定时任务，指令只用来手动触发和查状态。
 """
 
 from __future__ import annotations
@@ -30,10 +29,9 @@ from .atpy.兜底 import 以组名开头, 取落空参数, 帮助文本, 是否�
 _插件名 = "astrbot_plugin_bilibili_atpy"
 _组名 = "atpy"
 
-# QQ 官方适配器在 `@机器人` 唤醒时 `wake_prefix = ""`，**不剥掉 message_str
-# 里的 `/`**（只有 startswith 分支才剥）。于是 message_str 仍是 `/atpy 状态`，
-# 组名 `atpy` 匹配不上，整条指令静默失败、消息进模型。加一个带斜杠的别名，
-# 两种写法都能进。
+# QQ 官方适配器在 `@机器人` 唤醒时 `wake_prefix = ""`，**不剥掉 message_str 里的
+# `/`**。message_str 仍是 `/atpy 状态`，只有组名 `atpy` 匹配不上，整条指令静默
+# 失败、消息进模型。加一个带斜杠的别名，两种写法都能进。
 _组别名 = {f"/{_组名}"}
 
 
@@ -64,10 +62,8 @@ class _落空兜底(CustomFilter):
     """`/atpy <不是子命令>` 时自己接住，别让消息流到模型手里。
 
     `filter` 的返回值语义是「这条消息我管不管」，**不是**「我有没有命中」——
-    `CommandGroupFilter.filter` 里 `if not self.custom_filter_ok(...): return False`，
-    返回 False 会把整个指令组毙掉。所以这里恒返回 True：命中就自己给结果并
-    `stop_event()`，没命中就放行给子指令。写成「命中返回 False」会让
-    `/atpy 状态` 这种正常指令完全没反应。
+    `CommandGroupFilter.filter` 里 `if not self.custom_filter_ok(...): return False`。
+    所以这里恒返回 True：命中就自己给结果并 `stop_event()`，没命中就放行。
     """
 
     def filter(self, event: AstrMessageEvent, cfg: AstrBotConfig) -> bool:
@@ -76,9 +72,8 @@ class _落空兜底(CustomFilter):
         # custom_filter_ok 再检查组名），所以第一件事是判断关不关我事。
         if not 以组名开头(文本, _组名):
             return True
-        logger.debug(f"[{_组名}] 指令命中 message_str={文本!r}")
         if 是否落空(文本, _组名):
-            event.set_result(MessageEventResult().message(落空提示(取落空参数(文本, _组名))))
+            event.set_result(MessageEventResult().message(落空提示(取落空参数(文本, _组名), _组名)))
             event.stop_event()
         return True
 
@@ -113,7 +108,7 @@ class Atpy(Star):
         if self._通知会话 and self._通知会话.count(":") < 2:
             logger.warning(
                 f"[{_组名}] notify_umo 不像完整会话标识：{self._通知会话}。"
-                f"应该是 `平台:群类型:群号`，在群里发 /{_组名} UMO 取整串。"
+                f"应为 `平台:群类型:群号`，在群里发 ／{_组名} UMO 取整串。"
             )
 
         if _开关(config, "enabled", True):
@@ -135,7 +130,7 @@ class Atpy(Star):
     def _生成排期(self, 当天: date) -> list[int]:
         """把活跃时段切成 N 段，每段随机取一个点。
 
-        纯随机取 N 个点容易挤成一堆，分段之后间隔天然散开，看起来像人。
+        纯随机取 N 个点容易挤成一堆，分段之后间隔天然散开。
         """
         起 = datetime.combine(当天, 时间(hour=_整数(self.config, "active_start_hour", 9)))
         止 = datetime.combine(当天, 时间(hour=_整数(self.config, "active_end_hour", 23)))
@@ -209,7 +204,7 @@ class Atpy(Star):
         """找片、写评、发出去。返回结果字典，指令和日志共用。"""
         真的要发 = not (只预览 or self._只预览)
         if 真的要发 and not self._客户端.有登录态():
-            return {"成功": False, "原因": "没配 sessdata 或 bili_jct，发不了评论"}
+            return {"成功": False, "原因": "没配 B站登录态，发不了评论"}
         if 真的要发 and not self._朋友:
             return {"成功": False, "原因": "没配朋友昵称，不知道 @ 谁"}
 
@@ -220,7 +215,7 @@ class Atpy(Star):
         async with aiohttp.ClientSession() as 会话:
             视频 = await self._找片(会话, 已发过, 自定义, 类别)
             if 视频 is None:
-                return {"成功": False, "原因": f"「{类别}」这条线三个词都没找到合适的片子"}
+                return {"成功": False, "原因": f"「{类别}」三个词都没找到合适的片子"}
 
             await self._补简介(会话, 视频)
             锐评 = await self._写评(视频)
@@ -237,7 +232,7 @@ class Atpy(Star):
 
             if not 真的要发:
                 结果["成功"] = True
-                结果["原因"] = "预览模式，没有真的发出去"
+                结果["原因"] = "预览，没真发"
                 logger.info(f"[{_组名}] 预览：{视频.get('标题')} → {文本}")
                 return 结果
 
@@ -332,7 +327,7 @@ class Atpy(Star):
             logger.warning(f"[{_组名}] 模型超时")
             return ""
         except Exception as 错:
-            # 上游 429、鉴权失效、网络中断都会从这里出。这一轮废掉即可，
+            # 上游 429、鉴权失效、网络中断都从这里出。这一轮废掉即可，
             # 别让它冒到调度循环里显得像插件崩了。
             logger.warning(f"[{_组名}] 模型调用失败：{type(错).__name__} {错}")
             return ""
@@ -355,7 +350,7 @@ class Atpy(Star):
     async def _通知(self, 视频: dict[str, Any], 锐评: str) -> None:
         """在配置的会话里说一句，让群里知道它刚才干了什么。
 
-        只说艾特了几个人，不列名单——QQ 会把 `@名字` 当 at 语法重新渲染，
+        只说艾特了几个人，不列名单——QQ 会把 `@名字` 当 at 语法重渲染，
         名单里的英文名会被包成 `@//xxx/`，看着像发错了。
         """
         if not self._通知会话:
@@ -407,8 +402,7 @@ class Atpy(Star):
         """取当前会话标识，填进「通知会话」配置。"""
         event.stop_event()
         yield event.plain_result(
-            f"{event.unified_msg_origin}\n"
-            f"整行复制（含开头的平台名和两段冒号），填进插件配置的「通知会话」。"
+            f"{event.unified_msg_origin}\n整行复制（含开头的平台名）填进「通知会话」。"
         )
 
     @atpy.command("帮助", alias={"help", "菜单"})
@@ -437,21 +431,21 @@ class Atpy(Star):
         return "\n".join(行)
 
     def _结果文本(self, 结果: dict[str, Any]) -> str:
-        if 结果.get("成功"):
-            视频 = 结果["视频"]
-            行 = [
-                f"发了：{视频.get('标题', '')}",
-                f"艾特了 {len(self._朋友)} 个人｜{结果.get('锐评', '')}",
-                f"https://www.bilibili.com/video/{视频.get('bvid', '')}",
-            ]
-            if 结果.get("原因"):
-                行.append(结果["原因"])
-            return "\n".join(行)
-        return f"这一轮没成：{结果.get('原因', '原因不明')}"
+        if not 结果.get("成功"):
+            return f"这一轮没成：{结果.get('原因', '原因不明')}"
+        视频 = 结果["视频"]
+        行 = [
+            f"发了：{视频.get('标题', '')}",
+            f"艾特了 {len(self._朋友)} 个人｜{结果.get('锐评', '')}",
+            f"https://www.bilibili.com/video/{视频.get('bvid', '')}",
+        ]
+        if 结果.get("原因"):
+            行.append(结果["原因"])
+        return "\n".join(行)
 
     def _状态文本(self) -> str:
-        键 = date.today().isoformat()
-        排期 = self._记录簿.取排期(键)
+        # `取排期` 今天还没排过时返回 None，不能拿来迭代。
+        排期 = self._记录簿.取排期(date.today().isoformat()) or []
         剩余 = "、".join(datetime.fromtimestamp(点).strftime("%H:%M") for 点 in 排期)
         登录 = "已配" if self._客户端.有登录态() else "没配"
         朋友 = "、".join(self._朋友) if self._朋友 else "没配"
@@ -460,8 +454,9 @@ class Atpy(Star):
             f"后台：{后台}\n"
             f"B站登录：{登录}\n"
             f"@ 的对象：{朋友}\n"
+            f"今日类别：{pick.按天取类别(date.today())}\n"
             f"今日剩余：{剩余 or '没了'}\n"
-            f"预览模式：{'开' if self._只预览 else '关'}"
+            f"预览：{'开' if self._只预览 else '关'}"
         )
 
     async def terminate(self) -> None:
