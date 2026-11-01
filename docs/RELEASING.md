@@ -17,7 +17,7 @@
    | `pyproject.toml` | `0.1.0`（不带前缀） | 本地构建与打包 |
    | `uv.lock` | `0.1.0`（`uv lock` 生成） | 锁定依赖 |
 
-   只改前两处会漏 lock，`test/test_metadata.py::test_三处版本号一致` 会拦下。
+   只改前两处会漏 lock，`test/test_metadata.py::test_version_consistent_in_three_files` 会拦下。
    改完 `pyproject.toml` 记得跑 `uv lock`。
 
    `docs/CHANGELOG.md` 的首个小节标题要写成 `## [X.Y.Z] - YYYY-MM-DD`，

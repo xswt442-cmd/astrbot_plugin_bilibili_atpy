@@ -13,3 +13,6 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+
+# 本地草稿与交接
+/testplace/

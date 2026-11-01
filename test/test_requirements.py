@@ -17,72 +17,73 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-仓库根 = Path(__file__).resolve().parent.parent
-清单路径 = 仓库根 / "requirements.txt"
-声明路径 = 仓库根 / "pyproject.toml"
+repo_root = Path(__file__).resolve().parent.parent
+requirements_path = repo_root / "requirements.txt"
+declared_path = repo_root / "pyproject.toml"
 
 # 只取真正写依赖的行，注释和空行不算。
-_依赖行 = re.compile(r"^[A-Za-z0-9_.\-]+")
+_DEPENDENCY_RE = re.compile(r"^[A-Za-z0-9_.\-]+")
 
 # 项目声明支持 3.10，而 tomllib 要 3.11，所以这里不引 tomllib，
 # 只需要 dependencies 那一段的包名，正则读比解析 TOML 省事。
-_依赖段 = re.compile(r"^dependencies\s*=\s*\[(.*?)\]", re.MULTILINE | re.DOTALL)
+_DEPENDENCY_SECTION_RE = re.compile(r"^dependencies\s*=\s*\[(.*?)\]", re.MULTILINE | re.DOTALL)
 
 
-def _读清单() -> list[str]:
+def _read_requirements() -> list[str]:
     return [
-        行.strip()
-        for 行 in 清单路径.read_text(encoding="utf-8").splitlines()
-        if 行.strip() and not 行.strip().startswith("#")
+        line.strip()
+        for line in requirements_path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
     ]
 
 
-def _读声明() -> list[str]:
-    段 = _依赖段.search(声明路径.read_text(encoding="utf-8"))
-    assert 段, "pyproject.toml 里找不到 dependencies"
+def _read_declared() -> list[str]:
+    section = _DEPENDENCY_SECTION_RE.search(declared_path.read_text(encoding="utf-8"))
+    assert section, "pyproject.toml 里找不到 dependencies"
     # 一行一项。不能按逗号切：版本范围里自带逗号（>=3.9,<5），切开会断。
     return [
-        条.strip().strip(",").strip('"').strip("'")
-        for 条 in 段.group(1).splitlines()
-        if 条.strip().strip(",").strip('"').strip("'")
+        item.strip().strip(",").strip('"').strip("'")
+        for item in section.group(1).splitlines()
+        if item.strip().strip(",").strip('"').strip("'")
     ]
 
 
-def test_没有精确钉版本():
+def test_no_exact_pins():
     """`==` 会和核心的版本护栏撞车，pip 动不了核心的包就装不上。"""
-    钉死的 = [行 for 行 in _读清单() if "==" in 行]
-    assert not 钉死的, f"requirements.txt 不能钉死版本，会和核心冲突：{钉死的}"
+    pinned = [line for line in _read_requirements() if "==" in line]
+    assert not pinned, f"requirements.txt 不能钉死版本，会和核心冲突：{pinned}"
 
 
-def test_不是_uv_export_的产物():
-    assert "uv 自动生成" not in 清单路径.read_text(encoding="utf-8")
+def test_not_uv_export_artifact():
+    assert "uv 自动生成" not in requirements_path.read_text(encoding="utf-8")
 
 
-def test_直接依赖与_pyproject_一致():
+def test_direct_dependencies_match_pyproject():
     """两个文件各服务一头：pyproject 给本地 uv sync，本清单给 AstrBot 的 pip。"""
-    清单名 = {_依赖行.match(行).group() for 行 in _读清单()}
-    声明名 = {_依赖行.match(行).group() for 行 in _读声明()}
-    assert 清单名 == 声明名, (
-        f"两边不一致。requirements.txt: {sorted(清单名)}，pyproject.toml: {sorted(声明名)}"
+    requirement_names = {_DEPENDENCY_RE.match(line).group() for line in _read_requirements()}
+    declared_names = {_DEPENDENCY_RE.match(line).group() for line in _read_declared()}
+    assert requirement_names == declared_names, (
+        f"两边不一致。requirements.txt: {sorted(requirement_names)}，"
+        f"pyproject.toml: {sorted(declared_names)}"
     )
 
 
-def test_范围约束不是空的():
+def test_version_bounds_present():
     """每一行都要有版本下界，否则 pip 可能把核心的包换成任意版本。"""
-    for 行 in _读清单():
-        assert re.search(r"[><=]+[0-9]", 行), f"缺少版本约束：{行}"
+    for line in _read_requirements():
+        assert re.search(r"[><=]+[0-9]", line), f"缺少版本约束：{line}"
 
 
-def test_下界不松于_pyproject():
+def test_lower_bounds_not_looser_than_pyproject():
     """清单可以比 pyproject 更严，不能更松。更松会让 pip 去动核心的包。"""
 
-    def _下界(约束: str) -> tuple[int, ...]:
-        匹配 = re.search(r">=\s*([0-9.]+)", 约束)
-        return tuple(int(x) for x in 匹配.group(1).split(".")) if 匹配 else ()
+    def _lower_bound(constraint: str) -> tuple[int, ...]:
+        match = re.search(r">=\s*([0-9.]+)", constraint)
+        return tuple(int(x) for x in match.group(1).split(".")) if match else ()
 
-    清单 = {行.split(">")[0].split("<")[0].strip(): 行 for 行 in _读清单()}
-    for 声明 in _读声明():
-        包, _, 约束 = 声明.partition(">")
-        assert _下界(清单[包]) >= _下界(约束), (
-            f"{包} 在 requirements.txt 里的下界比 pyproject.toml 松"
+    requirements = {line.split(">")[0].split("<")[0].strip(): line for line in _read_requirements()}
+    for declared in _read_declared():
+        package, _, constraint = declared.partition(">")
+        assert _lower_bound(requirements[package]) >= _lower_bound(constraint), (
+            f"{package} 在 requirements.txt 里的下界比 pyproject.toml 松"
         )

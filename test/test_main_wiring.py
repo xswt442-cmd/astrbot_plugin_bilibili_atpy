@@ -13,39 +13,41 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from atpy.兜底 import 子命令名
+from atpy.fallback import SUBCOMMANDS
 
-仓库根 = Path(__file__).resolve().parent.parent
-_main = (仓库根 / "main.py").read_text(encoding="utf-8")
+repo_root = Path(__file__).resolve().parent.parent
+_main = (repo_root / "main.py").read_text(encoding="utf-8")
 
-_子命令 = re.compile(r'@atpy\.command\(\s*"([^"]+)"(?:\s*,\s*alias=\{([^}]*)\})?\s*\)')
-
-
-def _注册的全部名字() -> set[str]:
-    名字: set[str] = set()
-    for 匹配 in _子命令.finditer(_main):
-        名字.add(匹配.group(1))
-        if 匹配.group(2):
-            名字.update(re.findall(r'"([^"]+)"', 匹配.group(2)))
-    return 名字
+_COMMAND_RE = re.compile(r'@atpy\.command\(\s*"([^"]+)"(?:\s*,\s*alias=\{([^}]*)\})?\s*\)')
 
 
-def test_main里确实注册了子命令():
-    名字 = _注册的全部名字()
-    assert 名字, "main.py 里一个 @atpy.command 都没找到，写法变了就更新这个正则"
+def _registered_names() -> set[str]:
+    names: set[str] = set()
+    for match in _COMMAND_RE.finditer(_main):
+        names.add(match.group(1))
+        if match.group(2):
+            names.update(re.findall(r'"([^"]+)"', match.group(2)))
+    return names
 
 
-def test_兜底不多不少():
-    注册的 = _注册的全部名字()
-    assert 注册的 == set(子命令名), f"main.py 注册了 {sorted(注册的)}，兜底里是 {sorted(子命令名)}"
+def test_main_registers_commands():
+    names = _registered_names()
+    assert names, "main.py 里一个 @atpy.command 都没找到，写法变了就更新这个正则"
 
 
-def test_指令组挂了兜底过滤器():
+def test_fallback_matches_registered_commands():
+    registered = _registered_names()
+    assert registered == set(SUBCOMMANDS), (
+        f"main.py 注册了 {sorted(registered)}，兜底里是 {sorted(SUBCOMMANDS)}"
+    )
+
+
+def test_group_has_fallback_filter():
     """.filter 的返回值语义是「这条消息我管不管」，不是「命中没有」。"""
-    assert "@custom_filter(_落空兜底)" in _main
-    assert "@command_group(_组名, alias=_组别名)" in _main
+    assert "@custom_filter(_MissFallbackFilter)" in _main
+    assert "@command_group(_GROUP, alias=_GROUP_ALIASES)" in _main
 
 
-def test_组别名带斜杠():
+def test_group_alias_includes_slash():
     """QQ 官方 At 唤醒不剥 message_str 里的 `/`，没有别名整条指令静默失败。"""
-    assert '_组别名 = {f"/{_组名}"}' in _main, "main.py 里的 _组别名 必须带斜杠"
+    assert '_GROUP_ALIASES = {f"/{_GROUP}"}' in _main, "main.py 里的 _GROUP_ALIASES 必须带斜杠"

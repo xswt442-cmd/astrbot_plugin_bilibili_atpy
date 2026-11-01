@@ -20,45 +20,47 @@ import aiohttp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from atpy.bili import B站客户端, 接口错误  # noqa: E402
+from atpy.bili import ApiError, BiliClient  # noqa: E402
 
-必需字段 = ("aid", "bvid", "标题", "up主", "播放", "发布")
+REQUIRED_FIELDS = ("aid", "bvid", "标题", "up主", "播放", "发布")
 
 
-async def 主() -> int:
-    客户端 = B站客户端("", "")
-    async with aiohttp.ClientSession() as 会话:
+async def main() -> int:
+    client = BiliClient("", "")
+    async with aiohttp.ClientSession() as session:
         try:
-            结果 = await 客户端.搜索视频(会话, "离谱", 条数=30, 排序="totalrank")
-        except (接口错误, aiohttp.ClientError) as 错:
-            print(f"搜索接口失败：{type(错).__name__} {错}")
+            results = await client.search_videos(session, "离谱", count=30, order="totalrank")
+        except (ApiError, aiohttp.ClientError) as err:
+            print(f"搜索接口失败：{type(err).__name__} {err}")
             return 1
 
-    if not 结果:
+    if not results:
         print("搜索返回 0 条。接口可能改了排序值，或者整个搜索下线了。")
         return 1
 
-    缺字段 = [条 for 条 in 结果 if any(条.get(键) in (None, "") for 键 in 必需字段)]
-    if 缺字段:
-        print(f"{len(缺字段)} 条结果缺字段，第一条：{缺字段[0]}")
+    missing = [
+        item for item in results if any(item.get(key) in (None, "") for key in REQUIRED_FIELDS)
+    ]
+    if missing:
+        print(f"{len(missing)} 条结果缺字段，第一条：{missing[0]}")
         return 1
 
-    播放 = sorted(条["播放"] for 条 in 结果)
-    有播放量 = [值 for 值 in 播放 if 值 > 0]
-    if not 有播放量:
+    plays = sorted(item["播放"] for item in results)
+    with_plays = [value for value in plays if value > 0]
+    if not with_plays:
         # totalrank 全返回 0 播放，说明这个排序值已经不被认，退回成别的排序了。
         print("所有结果播放量都是 0，totalrank 可能已失效。")
         return 1
 
-    最新 = max(条["发布"] for 条 in 结果)
-    最近天数 = (time.time() - 最新) / 86400
-    print(f"{len(结果)} 条结果，播放 {播放[0]}-{播放[-1]}，最新一条 {最近天数:.0f} 天前")
+    newest = max(item["发布"] for item in results)
+    age_days = (time.time() - newest) / 86400
+    print(f"{len(results)} 条结果，播放 {plays[0]}-{plays[-1]}，最新一条 {age_days:.0f} 天前")
 
-    if 最近天数 > 400:
+    if age_days > 400:
         print("最新一条也超过一年，搜索结果整体过时，接口可能出问题。")
         return 1
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(主()))
+    sys.exit(asyncio.run(main()))

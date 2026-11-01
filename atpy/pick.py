@@ -15,7 +15,7 @@ from datetime import date
 from typing import Any
 
 # 五类内容，每天轮一类。类别顺序就是轮转顺序，加类别会打乱节奏。
-关键词池 = {
+KEYWORD_POOL = {
     "搞笑搞怪": [
         "整活",
         "沙雕",
@@ -62,17 +62,17 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class 门槛:
-    最少播放: int
-    最多播放: int
+class Threshold:
+    min_play: int
+    max_play: int
     # 0 表示不限天数。老视频也能评，评论区凉了无所谓，朋友是点进去看的。
-    最多几天前: int = 0
-    最短标题: int = 6
+    max_days_old: int = 0
+    min_title_length: int = 6
 
 
 # 搜索词再怪也会捞到这两类东西。前一组评一句就等着被举报；后一组是
 # `totalrank` 下混得很凶的网文与短剧推广——点进去是读书广告，锐评它没有意义。
-标题禁忌 = (
+FORBIDDEN_TITLES = (
     "代孕",
     "赌博",
     "博彩",
@@ -98,7 +98,7 @@ class 门槛:
 
 # 词表挡不住短剧：标题写成「xxx 第1-55集 超清中字（全）」，前缀千变万化，
 # 能认的只有集数格式和那几句固定后缀。
-标题禁忌式 = (
+FORBIDDEN_TITLE_PATTERNS = (
     re.compile(r"第\s*\d+\s*[-~—至]\s*\d+\s*集"),
     re.compile(r"第\s*\d+\s*集\s*全"),
     re.compile(r"超清中字"),
@@ -108,66 +108,68 @@ class 门槛:
 )
 
 
-def 按天取类别(当天: date) -> str:
+def category_for_date(day: date) -> str:
     """每天轮一个类别。用日期序数取模，不依赖历史记录，重启补跑都不会乱序。"""
-    类别们 = list(关键词池)
-    return 类别们[当天.toordinal() % len(类别们)]
+    categories = list(KEYWORD_POOL)
+    return categories[day.toordinal() % len(categories)]
 
 
-def 抽关键词(随机源: random.Random, 自定义: Iterable[str] = (), 类别: str | None = None) -> str:
+def pick_keyword(
+    rng: random.Random, custom: Iterable[str] = (), category: str | None = None
+) -> str:
     """从指定类别里抽一个词。配了自定义词就只用那些——用户明确写了要搜什么。"""
-    自定义表 = [词.strip() for 词 in 自定义 if 词.strip()]
-    if 自定义表:
-        return 随机源.choice(自定义表)
-    if 类别 and 类别 in 关键词池:
-        return 随机源.choice(关键词池[类别])
-    return 随机源.choice(关键词池[随机源.choice(list(关键词池))])
+    custom_words = [word.strip() for word in custom if word.strip()]
+    if custom_words:
+        return rng.choice(custom_words)
+    if category and category in KEYWORD_POOL:
+        return rng.choice(KEYWORD_POOL[category])
+    return rng.choice(KEYWORD_POOL[rng.choice(list(KEYWORD_POOL))])
 
 
-def 过滤(
-    候选: list[dict[str, Any]],
-    关: 门槛,
-    已发过: set[str],
-    现在: float | None = None,
+def filter_candidates(
+    candidates: list[dict[str, Any]],
+    limits: Threshold,
+    sent: set[str],
+    now: float | None = None,
 ) -> list[dict[str, Any]]:
     """留下播放量在区间内、标题够长、没发过的。`最多几天前` 为 0 时不管时间。"""
-    当下 = 现在 if 现在 is not None else time.time()
-    最早 = 当下 - 关.最多几天前 * 86400 if 关.最多几天前 > 0 else 0
-    留下 = []
-    for 视频 in 候选:
-        if not 视频.get("bvid") or not 视频.get("aid"):
+    current = now if now is not None else time.time()
+    earliest = current - limits.max_days_old * 86400 if limits.max_days_old > 0 else 0
+    kept = []
+    for video in candidates:
+        if not video.get("bvid") or not video.get("aid"):
             continue
-        if 视频["bvid"] in 已发过:
+        if video["bvid"] in sent:
             continue
-        标题 = 视频.get("标题", "")
-        if len(标题) < 关.最短标题:
+        title = video.get("标题", "")
+        if len(title) < limits.min_title_length:
             continue
-        if any(词 in 标题 for 词 in 标题禁忌):
+        if any(word in title for word in FORBIDDEN_TITLES):
             continue
-        if any(式.search(标题) for 式 in 标题禁忌式):
+        if any(pattern.search(title) for pattern in FORBIDDEN_TITLE_PATTERNS):
             continue
-        播放 = 视频.get("播放") or 0
-        if not (关.最少播放 <= 播放 <= 关.最多播放):
+        plays = video.get("播放") or 0
+        if not (limits.min_play <= plays <= limits.max_play):
             continue
-        if 最早:
-            发布 = 视频.get("发布") or 0
-            if 发布 and 发布 < 最早:
+        if earliest:
+            published = video.get("发布") or 0
+            if published and published < earliest:
                 continue
-        留下.append(视频)
-    return 留下
+        kept.append(video)
+    return kept
 
 
-def 挑一个(
-    随机源: random.Random,
-    候选: list[dict[str, Any]],
-    已发过: set[str],
-    关: 门槛,
+def pick_one(
+    rng: random.Random,
+    candidates: list[dict[str, Any]],
+    sent: set[str],
+    limits: Threshold,
 ) -> dict[str, Any] | None:
     """把筛选后的候选随机取一个。空列表返回 None，由调用方决定换词重搜。"""
-    留下 = 过滤(候选, 关, 已发过)
-    if not 留下:
+    kept = filter_candidates(candidates, limits, sent)
+    if not kept:
         return None
     # 越怪越好：优先取播放量偏中位的那批，避免一眼就是爆款。
-    留下.sort(key=lambda 视频: 视频.get("播放") or 0)
-    偏冷 = 留下[: max(1, len(留下) // 2)]
-    return 随机源.choice(偏冷)
+    kept.sort(key=lambda video: video.get("播放") or 0)
+    cooler = kept[: max(1, len(kept) // 2)]
+    return rng.choice(cooler)

@@ -2,139 +2,153 @@ import random
 import time
 from datetime import date
 
-from atpy.pick import 关键词池, 抽关键词, 按天取类别, 挑一个, 过滤, 门槛
+from atpy.pick import (
+    KEYWORD_POOL,
+    Threshold,
+    category_for_date,
+    filter_candidates,
+    pick_keyword,
+    pick_one,
+)
 
-关 = 门槛(最少播放=2000, 最多播放=500000, 最多几天前=45)
+limits = Threshold(min_play=2000, max_play=500000, max_days_old=45)
 
 
-def 造(bvid: str, 播放: int, 标题: str = "一个足够长的标题", 年前天数: float = 1, aid: int = 1):
+def make_video(
+    bvid: str, plays: int, title: str = "一个足够长的标题", days_ago: float = 1, aid: int = 1
+):
     return {
         "bvid": bvid,
         "aid": aid,
-        "标题": 标题,
-        "播放": 播放,
-        "发布": int(time.time() - 年前天数 * 86400),
+        "标题": title,
+        "播放": plays,
+        "发布": int(time.time() - days_ago * 86400),
     }
 
 
-def test_播放量两头都卡():
-    候选 = [造("BV1", 100), 造("BV2", 10000), 造("BV3", 900000)]
-    留下 = 过滤(候选, 关, set())
-    assert [视频["bvid"] for 视频 in 留下] == ["BV2"]
+def test_play_count_bounds():
+    candidates = [make_video("BV1", 100), make_video("BV2", 10000), make_video("BV3", 900000)]
+    kept = filter_candidates(candidates, limits, set())
+    assert [video["bvid"] for video in kept] == ["BV2"]
 
 
-def test_超时的不留():
-    候选 = [造("BV老", 10000, 年前天数=60), 造("BV新", 10000, 年前天数=3)]
-    留下 = 过滤(候选, 关, set())
-    assert [视频["bvid"] for 视频 in 留下] == ["BV新"]
+def test_too_old_dropped():
+    candidates = [make_video("BV老", 10000, days_ago=60), make_video("BV新", 10000, days_ago=3)]
+    kept = filter_candidates(candidates, limits, set())
+    assert [video["bvid"] for video in kept] == ["BV新"]
 
 
-def test_发过的不留():
-    候选 = [造("BV1", 10000), 造("BV2", 10000)]
-    留下 = 过滤(候选, 关, {"BV1"})
-    assert [视频["bvid"] for 视频 in 留下] == ["BV2"]
+def test_already_sent_dropped():
+    candidates = [make_video("BV1", 10000), make_video("BV2", 10000)]
+    kept = filter_candidates(candidates, limits, {"BV1"})
+    assert [video["bvid"] for video in kept] == ["BV2"]
 
 
-def test_标题太短与缺aid的不留():
-    现在 = int(time.time())
-    候选 = [
-        造("BV短", 10000, 标题="哦"),
-        {"bvid": "BV无aid", "aid": None, "标题": "一个足够长的标题", "播放": 10000, "发布": 现在},
-        {"bvid": "", "aid": 3, "标题": "一个足够长的标题", "播放": 10000, "发布": 现在},
+def test_short_title_or_missing_aid_dropped():
+    now = int(time.time())
+    candidates = [
+        make_video("BV短", 10000, title="哦"),
+        {"bvid": "BV无aid", "aid": None, "标题": "一个足够长的标题", "播放": 10000, "发布": now},
+        {"bvid": "", "aid": 3, "标题": "一个足够长的标题", "播放": 10000, "发布": now},
     ]
-    assert 过滤(候选, 关, set()) == []
+    assert filter_candidates(candidates, limits, set()) == []
 
 
-def test_没有候选时返回空():
-    assert 挑一个(random.Random(1), [], set(), 关) is None
-    assert 挑一个(random.Random(1), [造("BV1", 1)], set(), 关) is None
+def test_no_candidate_returns_none():
+    assert pick_one(random.Random(1), [], set(), limits) is None
+    assert pick_one(random.Random(1), [make_video("BV1", 1)], set(), limits) is None
 
 
-def test_优先从偏冷的一半里挑():
+def test_prefers_cooler_half():
     """播放量排序后只在前半段随机，避免每次都被爆款占掉。"""
-    候选 = [造(f"BV{序}", 3000 + 序 * 1000) for 序 in range(10)]
-    选中 = {挑一个(random.Random(种子), 候选, set(), 关)["bvid"] for 种子 in range(40)}
+    candidates = [make_video(f"BV{i}", 3000 + i * 1000) for i in range(10)]
+    chosen = {
+        pick_one(random.Random(seed), candidates, set(), limits)["bvid"] for seed in range(40)
+    }
     # 后半段（播放量最高的五个）不应该出现
-    assert not (选中 & {f"BV{序}" for 序 in range(5, 10)})
-    assert 选中
+    assert not (chosen & {f"BV{i}" for i in range(5, 10)})
+    assert chosen
 
 
-def test_关键词取自池子里():
-    随机源 = random.Random(7)
-    抽到 = {抽关键词(随机源) for _ in range(30)}
-    assert len(抽到) > 3
+def test_keywords_from_pool():
+    rng = random.Random(7)
+    picked = {pick_keyword(rng) for _ in range(30)}
+    assert len(picked) > 3
 
 
-def test_自定义关键词可用():
-    随机源 = random.Random(3)
-    抽到 = {抽关键词(随机源, ["微波炉", "洗衣机"]) for _ in range(30)}
-    assert 抽到 <= {"微波炉", "洗衣机"}
+def test_custom_keywords_supported():
+    rng = random.Random(3)
+    picked = {pick_keyword(rng, ["微波炉", "洗衣机"]) for _ in range(30)}
+    assert picked <= {"微波炉", "洗衣机"}
 
 
-def test_指定类别只从那一类里抽():
+def test_category_restricts_keywords():
     """每天轮一类，抽词不能跨到别的类去。"""
-    随机源 = random.Random(11)
-    抽到 = {抽关键词(随机源, 类别="二游") for _ in range(40)}
-    assert 抽到 <= set(关键词池["二游"])
+    rng = random.Random(11)
+    picked = {pick_keyword(rng, category="二游") for _ in range(40)}
+    assert picked <= set(KEYWORD_POOL["二游"])
 
 
-def test_自定义关键词优先于类别():
+def test_custom_keywords_win_over_category():
     """用户明确写了要搜什么，就不该再掺类别里的词。"""
-    随机源 = random.Random(5)
-    assert 抽关键词(随机源, ["微波炉"], 类别="王者荣耀") == "微波炉"
+    rng = random.Random(5)
+    assert pick_keyword(rng, ["微波炉"], category="王者荣耀") == "微波炉"
 
 
-def test_五类内容按天轮转():
+def test_five_categories_rotate_daily():
     """连着五天应该把五类走一遍，不多不少。"""
-    起点 = date(2026, 10, 21)
-    五天 = [按天取类别(date.fromordinal(起点.toordinal() + i)) for i in range(5)]
-    assert len(set(五天)) == 5
-    assert set(五天) == set(关键词池)
+    start = date(2026, 10, 21)
+    five_days = [category_for_date(date.fromordinal(start.toordinal() + i)) for i in range(5)]
+    assert len(set(five_days)) == 5
+    assert set(five_days) == set(KEYWORD_POOL)
 
 
-def test_轮转跨天接续():
+def test_rotation_continues_across_days():
     """隔一天取到的类别，是前一天的下一个。"""
-    今天 = date(2026, 10, 21)
-    明天 = date(2026, 10, 22)
-    类别们 = list(关键词池)
-    下标 = 类别们.index(按天取类别(今天))
-    assert 按天取类别(明天) == 类别们[(下标 + 1) % len(类别们)]
+    today = date(2026, 10, 21)
+    tomorrow = date(2026, 10, 22)
+    categories = list(KEYWORD_POOL)
+    index = categories.index(category_for_date(today))
+    assert category_for_date(tomorrow) == categories[(index + 1) % len(categories)]
 
 
-def test_时间门槛为0时不限天数():
+def test_zero_age_limit_keeps_old_videos():
     """老视频也能评，评论区凉了无所谓。"""
-    老片 = 造("BV老片", 50000, 年前天数=1200)
-    新片 = 造("BV新片", 50000, 年前天数=1)
-    放 = 门槛(最少播放=10000, 最多播放=5_000_000, 最多几天前=0)
-    assert {视频["bvid"] for 视频 in 过滤([老片, 新片], 放, set())} == {"BV老片", "BV新片"}
+    old_video = make_video("BV老片", 50000, days_ago=1200)
+    new_video = make_video("BV新片", 50000, days_ago=1)
+    loose = Threshold(min_play=10000, max_play=5_000_000, max_days_old=0)
+    assert {video["bvid"] for video in filter_candidates([old_video, new_video], loose, set())} == {
+        "BV老片",
+        "BV新片",
+    }
 
 
-def test_禁忌标题被挡掉():
-    候选 = [
-        造("BV广告", 10000, 标题="抖音代孕广告实录"),
-        造("BV正常", 10000, 标题="手搓一个会走路的洗衣机"),
+def test_forbidden_titles_dropped():
+    candidates = [
+        make_video("BV广告", 10000, title="抖音代孕广告实录"),
+        make_video("BV正常", 10000, title="手搓一个会走路的洗衣机"),
     ]
-    留下 = 过滤(候选, 关, set())
-    assert [视频["bvid"] for 视频 in 留下] == ["BV正常"]
+    kept = filter_candidates(candidates, limits, set())
+    assert [video["bvid"] for video in kept] == ["BV正常"]
 
 
-def test_网文与短剧推广被挡掉():
+def test_novel_and_shortdrama_promos_dropped():
     """`totalrank` 下这类标题混得很凶，点进去是读书广告，锐评它没有意义。"""
-    候选 = [
-        造("BV小说", 50000, 标题="大夏江湖第一祸害虾仁，凭拳脚医术横行天下"),
-        造("BV短剧", 50000, 标题="重生之我在末世当龙王，全集完整"),
-        造("BV正常", 50000, 标题="手搓一个会走路的洗衣机"),
+    candidates = [
+        make_video("BV小说", 50000, title="大夏江湖第一祸害虾仁，凭拳脚医术横行天下"),
+        make_video("BV短剧", 50000, title="重生之我在末世当龙王，全集完整"),
+        make_video("BV正常", 50000, title="手搓一个会走路的洗衣机"),
     ]
-    留下 = [视频["bvid"] for 视频 in 过滤(候选, 关, set())]
-    assert 留下 == ["BV正常"]
+    kept = [video["bvid"] for video in filter_candidates(candidates, limits, set())]
+    assert kept == ["BV正常"]
 
 
-def test_短剧集数格式被挡掉():
+def test_shortdrama_episode_formats_dropped():
     """短剧标题的前缀千变万化，能认的只有「第1-55集」这类格式。"""
-    候选 = [
-        造("BV短剧1", 50000, 标题="Ai欧腐【皮囊下是深海】第1-55集 超清中字"),
-        造("BV短剧2", 50000, 标题="都市奇缘 第1~80集全"),
-        造("BV正常", 50000, 标题="深海一万米到底有什么"),
+    candidates = [
+        make_video("BV短剧1", 50000, title="Ai欧腐【皮囊下是深海】第1-55集 超清中字"),
+        make_video("BV短剧2", 50000, title="都市奇缘 第1~80集全"),
+        make_video("BV正常", 50000, title="深海一万米到底有什么"),
     ]
-    留下 = [视频["bvid"] for 视频 in 过滤(候选, 关, set())]
-    assert 留下 == ["BV正常"]
+    kept = [video["bvid"] for video in filter_candidates(candidates, limits, set())]
+    assert kept == ["BV正常"]
