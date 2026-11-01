@@ -9,9 +9,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-字数上限 = 10
+MAX_LENGTH = 10
 
-系统提示 = (
+SYSTEM_PROMPT = (
     "你是一个在评论区混了很久的老网友，说话又损又快。"
     "给你一个视频，你只写一句点评。"
     "要求：不超过十个汉字；不解释、不铺垫、不加引号；"
@@ -20,41 +20,41 @@ from typing import Any
     "只输出这一句，不要任何前缀和后缀。"
 )
 
-_剥前缀 = re.compile(r"^(锐评|评论|点评|吐槽)\s*[:：]?\s*")
-_引号 = "「」『』“”\"'‘’《》【】"
+_PREFIX_RE = re.compile(r"^(锐评|评论|点评|吐槽)\s*[:：]?\s*")
+_QUOTES = "「」『』“”\"'‘’《》【】"
 
 
-def 拼提示词(视频: dict[str, Any]) -> str:
-    片段 = [
-        f"标题：{视频.get('标题', '')}",
-        f"UP主：{视频.get('up主', '')}",
-        f"分区：{视频.get('分区', '')}",
-        f"播放：{视频.get('播放', 0)}",
+def build_prompt(video: dict[str, Any]) -> str:
+    parts = [
+        f"标题：{video.get('标题', '')}",
+        f"UP主：{video.get('up主', '')}",
+        f"分区：{video.get('分区', '')}",
+        f"播放：{video.get('播放', 0)}",
     ]
-    简介 = (视频.get("简介") or "").strip()
-    if 简介:
-        片段.append(f"简介：{简介[:150]}")
-    片段.append("写一句点评。")
-    return "\n".join(片段)
+    description = (video.get("简介") or "").strip()
+    if description:
+        parts.append(f"简介：{description[:150]}")
+    parts.append("写一句点评。")
+    return "\n".join(parts)
 
 
-def 清洗(原文: str) -> str:
+def clean(raw: str) -> str:
     """去前缀、去引号、取第一行，最后按字数截断。"""
-    文本 = (原文 or "").strip()
-    if not 文本:
+    text = (raw or "").strip()
+    if not text:
         return ""
     # 模型爱把结果塞进代码块或整段解释里，先取第一行有内容的。
-    for 行 in 文本.splitlines():
-        行 = 行.strip()
-        if 行:
-            文本 = 行
+    for line in text.splitlines():
+        line = line.strip()
+        if line:
+            text = line
             break
-    文本 = _剥前缀.sub("", 文本)
-    文本 = 文本.strip().strip(_引号).strip()
-    文本 = 文本.strip(_引号).strip()
+    text = _PREFIX_RE.sub("", text)
+    text = text.strip().strip(_QUOTES).strip()
+    text = text.strip(_QUOTES).strip()
     # 中文按字符数算，一个汉字一个字。
-    return 文本[:字数上限].strip()
+    return text[:MAX_LENGTH].strip()
 
 
-def 可用(文本: str) -> bool:
-    return bool(文本) and len(文本) >= 2
+def is_usable(text: str) -> bool:
+    return bool(text) and len(text) >= 2

@@ -14,21 +14,21 @@ from typing import Any
 
 import aiohttp
 
-用户代理 = (
+USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
-导航接口 = "https://api.bilibili.com/x/web-interface/nav"
-搜索接口 = "https://api.bilibili.com/x/web-interface/wbi/search/type"
-详情接口 = "https://api.bilibili.com/x/web-interface/view"
-发评论接口 = "https://api.bilibili.com/x/v2/reply/add"
-点赞接口 = "https://api.bilibili.com/x/v2/view/like"
-收藏夹列表接口 = "https://api.bilibili.com/x/v3/fav/folder/created/list-all"
-收藏接口 = "https://api.bilibili.com/x/v3/fav/resource/deal"
+NAV_API = "https://api.bilibili.com/x/web-interface/nav"
+SEARCH_API = "https://api.bilibili.com/x/web-interface/wbi/search/type"
+VIEW_API = "https://api.bilibili.com/x/web-interface/view"
+REPLY_API = "https://api.bilibili.com/x/v2/reply/add"
+LIKE_API = "https://api.bilibili.com/x/v2/view/like"
+FAV_LIST_API = "https://api.bilibili.com/x/v3/fav/folder/created/list-all"
+FAV_API = "https://api.bilibili.com/x/v3/fav/resource/deal"
 
 # WBI 签名用的重排表，B站前端固定值。
-混淆表 = [
+MIXIN_TABLE = [
     46,
     47,
     18,
@@ -96,7 +96,7 @@ import aiohttp
 ]
 
 # 发评论的返回码。只翻译会实际遇到的几个，其余原样带回给调用方判断。
-评论错误码 = {
+REPLY_ERROR_CODES = {
     -101: "登录态失效，需要重新扫码",
     -111: "csrf 校验失败，bili_jct 不对",
     -403: "被风控拦截，先停一天",
@@ -107,246 +107,248 @@ import aiohttp
 }
 
 
-class 接口错误(RuntimeError):
+class ApiError(RuntimeError):
     """B站返回了非 0 的业务码，或者干脆没返回 JSON。"""
 
 
-def 解析返回体(文本: str, 状态: int, 地址: str) -> dict[str, Any]:
+def parse_response(text: str, status: int, url: str) -> dict[str, Any]:
     """把 HTTP 响应翻成字典，翻不动就抛 `接口错误`。
 
     风控命中时 B站回的是 HTML 而不是 JSON（412），直接 `.json()` 抛的
     `JSONDecodeError` 不是 `接口错误`，会一路冒到调用方把整轮打崩。
     所以状态码和解析失败都在这里收口，调用方只认 `接口错误` 一种。
     """
-    if 状态 == 412:
-        raise 接口错误("B站返回 412，触发风控。隔几小时再试，或换小号。")
-    if 状态 != 200:
-        raise 接口错误(f"{地址} 返回 HTTP {状态}")
+    if status == 412:
+        raise ApiError("B站返回 412，触发风控。隔几小时再试，或换小号。")
+    if status != 200:
+        raise ApiError(f"{url} 返回 HTTP {status}")
 
     try:
-        载荷 = json.loads(文本)
-    except json.JSONDecodeError as 错:
+        payload = json.loads(text)
+    except json.JSONDecodeError as err:
         # 截一段原文，能看出是验证页还是别的，又不至于刷屏。
-        raise 接口错误(f"{地址} 返回的不是 JSON：{文本[:80]!r}") from 错
+        raise ApiError(f"{url} 返回的不是 JSON：{text[:80]!r}") from err
 
-    if not isinstance(载荷, dict):
-        raise 接口错误(f"{地址} 返回体不是对象")
-    return 载荷
+    if not isinstance(payload, dict):
+        raise ApiError(f"{url} 返回体不是对象")
+    return payload
 
 
-class B站客户端:
+class BiliClient:
     def __init__(self, sessdata: str, bili_jct: str) -> None:
         self._sessdata = sessdata.strip()
         self._bili_jct = bili_jct.strip()
-        self._过期时间 = 0.0
-        self._图片密钥 = ""
-        self._子密钥 = ""
+        self._expires_at = 0.0
+        self._img_key = ""
+        self._sub_key = ""
         # 点赞收藏要 mid 和默认收藏夹 id，取一次就够，跨轮复用。
         self._mid = 0
-        self._收藏夹 = ""
+        self._fav_id = ""
 
-    def _饼干(self) -> str:
+    def _cookie(self) -> str:
         return f"SESSDATA={self._sessdata}; bili_jct={self._bili_jct}"
 
-    def 有登录态(self) -> bool:
+    def has_login(self) -> bool:
         return bool(self._sessdata and self._bili_jct)
 
-    def _请求头(self) -> dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {
-            "User-Agent": 用户代理,
+            "User-Agent": USER_AGENT,
             "Referer": "https://www.bilibili.com/",
-            "Cookie": self._饼干(),
+            "Cookie": self._cookie(),
         }
 
-    async def _取(
+    async def _get(
         self,
-        会话: aiohttp.ClientSession,
-        地址: str,
-        参数: dict[str, Any],
+        session: aiohttp.ClientSession,
+        url: str,
+        params: dict[str, Any],
     ) -> dict[str, Any]:
-        async with 会话.get(
-            地址, params=参数, headers=self._请求头(), timeout=aiohttp.ClientTimeout(total=15)
-        ) as 响应:
-            状态 = 响应.status
-            文本 = await 响应.text()
-        return 解析返回体(文本, 状态, 地址)
+        async with session.get(
+            url, params=params, headers=self._headers(), timeout=aiohttp.ClientTimeout(total=15)
+        ) as response:
+            status = response.status
+            text = await response.text()
+        return parse_response(text, status, url)
 
-    async def _签名(self, 会话: aiohttp.ClientSession, 参数: dict[str, Any]) -> dict[str, Any]:
+    async def _sign(self, session: aiohttp.ClientSession, params: dict[str, Any]) -> dict[str, Any]:
         """给 wbi 接口补 wts 与 w_rid。密钥约一天一换，缓存 6 小时。"""
-        if time.time() > self._过期时间:
-            载荷 = await self._取(会话, 导航接口, {})
-            图片 = ((载荷.get("data") or {}).get("wbi_img")) or {}
-            图片链接 = 图片.get("img_url", "")
-            子链接 = 图片.get("sub_url", "")
-            if not 图片链接 or not 子链接:
-                raise 接口错误("取不到 wbi 密钥，导航接口没返回 wbi_img")
-            self._图片密钥 = 图片链接.rsplit("/", 1)[-1].split(".")[0]
-            self._子密钥 = 子链接.rsplit("/", 1)[-1].split(".")[0]
-            self._过期时间 = time.time() + 6 * 3600
+        if time.time() > self._expires_at:
+            payload = await self._get(session, NAV_API, {})
+            img = ((payload.get("data") or {}).get("wbi_img")) or {}
+            img_url = img.get("img_url", "")
+            sub_url = img.get("sub_url", "")
+            if not img_url or not sub_url:
+                raise ApiError("取不到 wbi 密钥，导航接口没返回 wbi_img")
+            self._img_key = img_url.rsplit("/", 1)[-1].split(".")[0]
+            self._sub_key = sub_url.rsplit("/", 1)[-1].split(".")[0]
+            self._expires_at = time.time() + 6 * 3600
 
-        原始 = self._图片密钥 + self._子密钥
-        混入密钥 = reduce(lambda 累积, 位: 累积 + 原始[位], 混淆表, "")[:32]
-        参数 = dict(参数)
-        参数["wts"] = int(time.time())
-        排序后 = dict(sorted(参数.items()))
-        待签 = "&".join(f"{键}={值}" for 键, 值 in 排序后.items())
-        排序后["w_rid"] = hashlib.md5((待签 + 混入密钥).encode()).hexdigest()
-        return 排序后
+        raw = self._img_key + self._sub_key
+        mixin_key = reduce(lambda acc, idx: acc + raw[idx], MIXIN_TABLE, "")[:32]
+        params = dict(params)
+        params["wts"] = int(time.time())
+        sorted_params = dict(sorted(params.items()))
+        to_sign = "&".join(f"{key}={value}" for key, value in sorted_params.items())
+        sorted_params["w_rid"] = hashlib.md5((to_sign + mixin_key).encode()).hexdigest()
+        return sorted_params
 
-    async def 搜索视频(
+    async def search_videos(
         self,
-        会话: aiohttp.ClientSession,
-        关键词: str,
-        条数: int = 20,
-        排序: str = "pubdate",
+        session: aiohttp.ClientSession,
+        keyword: str,
+        count: int = 20,
+        order: str = "pubdate",
     ) -> list[dict[str, Any]]:
         """按关键词搜视频。排序 pubdate 拿新发布的，totalrank 拿综合。"""
-        参数 = await self._签名(
-            会话,
+        params = await self._sign(
+            session,
             {
-                "keyword": 关键词,
+                "keyword": keyword,
                 "search_type": "video",
                 "page": 1,
-                "page_size": 条数,
-                "order": 排序,
+                "page_size": count,
+                "order": order,
             },
         )
-        载荷 = await self._取(会话, 搜索接口, 参数)
-        if 载荷.get("code") == -352:
+        payload = await self._get(session, SEARCH_API, params)
+        if payload.get("code") == -352:
             # 密钥换了，丢缓存重签一次。
-            self._过期时间 = 0.0
-            参数 = await self._签名(
-                会话,
+            self._expires_at = 0.0
+            params = await self._sign(
+                session,
                 {
-                    "keyword": 关键词,
+                    "keyword": keyword,
                     "search_type": "video",
                     "page": 1,
-                    "page_size": 条数,
-                    "order": 排序,
+                    "page_size": count,
+                    "order": order,
                 },
             )
-            载荷 = await self._取(会话, 搜索接口, 参数)
-        if 载荷.get("code") != 0:
-            raise 接口错误(f"搜索失败 code={载荷.get('code')} {载荷.get('message', '')}")
+            payload = await self._get(session, SEARCH_API, params)
+        if payload.get("code") != 0:
+            raise ApiError(f"搜索失败 code={payload.get('code')} {payload.get('message', '')}")
 
-        结果 = []
-        for 条目 in (载荷.get("data") or {}).get("result") or []:
+        results = []
+        for item in (payload.get("data") or {}).get("result") or []:
             # 标题里的关键词会被包成 <em>，去掉标签才能直接喂模型。
-            标题 = 条目.get("title", "")
-            for 标签 in ('<em class="keyword">', "</em>", "<em>", "<em class='keyword'>"):
-                标题 = 标题.replace(标签, "")
-            结果.append(
+            title = item.get("title", "")
+            for tag in ('<em class="keyword">', "</em>", "<em>", "<em class='keyword'>"):
+                title = title.replace(tag, "")
+            results.append(
                 {
-                    "aid": 条目.get("aid") or 条目.get("id"),
-                    "bvid": 条目.get("bvid", ""),
-                    "标题": 标题.strip(),
-                    "up主": 条目.get("author", ""),
-                    "简介": (条目.get("description") or "").strip(),
-                    "播放": 条目.get("play") or 0,
-                    "弹幕": 条目.get("video_review") or 0,
-                    "时长": 条目.get("duration", ""),
-                    "发布": 条目.get("pubdate") or 0,
-                    "分区": 条目.get("typename", ""),
+                    "aid": item.get("aid") or item.get("id"),
+                    "bvid": item.get("bvid", ""),
+                    "标题": title.strip(),
+                    "up主": item.get("author", ""),
+                    "简介": (item.get("description") or "").strip(),
+                    "播放": item.get("play") or 0,
+                    "弹幕": item.get("video_review") or 0,
+                    "时长": item.get("duration", ""),
+                    "发布": item.get("pubdate") or 0,
+                    "分区": item.get("typename", ""),
                 }
             )
-        return 结果
+        return results
 
-    async def 取详情(self, 会话: aiohttp.ClientSession, bvid: str) -> dict[str, Any] | None:
-        载荷 = await self._取(会话, 详情接口, {"bvid": bvid})
-        if 载荷.get("code") != 0:
+    async def fetch_detail(
+        self, session: aiohttp.ClientSession, bvid: str
+    ) -> dict[str, Any] | None:
+        payload = await self._get(session, VIEW_API, {"bvid": bvid})
+        if payload.get("code") != 0:
             return None
-        数据 = 载荷.get("data") or {}
-        简介 = (数据.get("desc") or "").strip()
+        data = payload.get("data") or {}
+        description = (data.get("desc") or "").strip()
         return {
-            "aid": 数据.get("aid"),
-            "bvid": 数据.get("bvid", bvid),
-            "标题": (数据.get("title") or "").strip(),
-            "up主": ((数据.get("owner") or {}).get("name")) or "",
-            "简介": 简介[:300],
-            "播放": ((数据.get("stat") or {}).get("view")) or 0,
-            "弹幕": ((数据.get("stat") or {}).get("danmaku")) or 0,
-            "发布": 数据.get("pubdate") or 0,
-            "分区": ((数据.get("tname")) or ""),
+            "aid": data.get("aid"),
+            "bvid": data.get("bvid", bvid),
+            "标题": (data.get("title") or "").strip(),
+            "up主": ((data.get("owner") or {}).get("name")) or "",
+            "简介": description[:300],
+            "播放": ((data.get("stat") or {}).get("view")) or 0,
+            "弹幕": ((data.get("stat") or {}).get("danmaku")) or 0,
+            "发布": data.get("pubdate") or 0,
+            "分区": ((data.get("tname")) or ""),
         }
 
-    async def 发评论(
+    async def post_comment(
         self,
-        会话: aiohttp.ClientSession,
+        session: aiohttp.ClientSession,
         aid: int,
-        内容: str,
+        content: str,
     ) -> int:
         """在视频下发一条顶层评论，返回 rpid。"""
-        async with 会话.post(
-            发评论接口,
+        async with session.post(
+            REPLY_API,
             data={
                 "oid": aid,
                 "type": 1,
-                "message": 内容,
+                "message": content,
                 "csrf": self._bili_jct,
                 "plat": 1,
             },
-            headers=self._请求头(),
+            headers=self._headers(),
             timeout=aiohttp.ClientTimeout(total=20),
-        ) as 响应:
-            载荷 = await 响应.json(content_type=None)
-        if not isinstance(载荷, dict):
-            raise 接口错误(f"发评论返回体不是对象：{响应.status}")
-        码 = 载荷.get("code")
-        if 码 != 0:
-            原因 = 评论错误码.get(码) or 载荷.get("message") or "未知原因"
-            raise 接口错误(f"发评论失败 code={码}：{原因}")
-        return int(((载荷.get("data") or {}).get("rpid")) or 0)
+        ) as response:
+            payload = await response.json(content_type=None)
+        if not isinstance(payload, dict):
+            raise ApiError(f"发评论返回体不是对象：{response.status}")
+        code = payload.get("code")
+        if code != 0:
+            reason = REPLY_ERROR_CODES.get(code) or payload.get("message") or "未知原因"
+            raise ApiError(f"发评论失败 code={code}：{reason}")
+        return int(((payload.get("data") or {}).get("rpid")) or 0)
 
-    async def _提交(
+    async def _post(
         self,
-        会话: aiohttp.ClientSession,
-        地址: str,
-        数据: dict[str, Any],
-        说明: str,
+        session: aiohttp.ClientSession,
+        url: str,
+        data: dict[str, Any],
+        label: str,
     ) -> dict[str, Any]:
         """带 csrf 的写操作。非 0 业务码一律翻成 `接口错误`。"""
-        async with 会话.post(
-            地址,
-            data={**数据, "csrf": self._bili_jct},
-            headers=self._请求头(),
+        async with session.post(
+            url,
+            data={**data, "csrf": self._bili_jct},
+            headers=self._headers(),
             timeout=aiohttp.ClientTimeout(total=15),
-        ) as 响应:
-            状态 = 响应.status
-            文本 = await 响应.text()
-        载荷 = 解析返回体(文本, 状态, 地址)
-        码 = 载荷.get("code")
-        if 码 != 0:
-            raise 接口错误(f"{说明}失败 code={码}：{载荷.get('message') or '未知原因'}")
-        return 载荷
+        ) as response:
+            status = response.status
+            text = await response.text()
+        payload = parse_response(text, status, url)
+        code = payload.get("code")
+        if code != 0:
+            raise ApiError(f"{label}失败 code={code}：{payload.get('message') or '未知原因'}")
+        return payload
 
-    async def _我的mid(self, 会话: aiohttp.ClientSession) -> int:
+    async def _my_mid(self, session: aiohttp.ClientSession) -> int:
         if self._mid:
             return self._mid
-        载荷 = await self._取(会话, 导航接口, {})
-        mid = (载荷.get("data") or {}).get("mid")
+        payload = await self._get(session, NAV_API, {})
+        mid = (payload.get("data") or {}).get("mid")
         if not mid:
-            raise 接口错误("登录态失效，导航接口没返回 mid")
+            raise ApiError("登录态失效，导航接口没返回 mid")
         self._mid = int(mid)
         return self._mid
 
-    async def _默认收藏夹(self, 会话: aiohttp.ClientSession) -> str:
+    async def _default_fav(self, session: aiohttp.ClientSession) -> str:
         """取账号下第一个收藏夹。列表按创建时间排，第一个就是默认的。"""
-        if self._收藏夹:
-            return self._收藏夹
-        载荷 = await self._取(会话, 收藏夹列表接口, {"up_mid": await self._我的mid(会话)})
-        列表 = (载荷.get("data") or {}).get("list") or []
-        if not 列表:
-            raise 接口错误("账号下没有收藏夹，建一个再试")
-        self._收藏夹 = str(列表[0]["id"])
-        return self._收藏夹
+        if self._fav_id:
+            return self._fav_id
+        payload = await self._get(session, FAV_LIST_API, {"up_mid": await self._my_mid(session)})
+        items = (payload.get("data") or {}).get("list") or []
+        if not items:
+            raise ApiError("账号下没有收藏夹，建一个再试")
+        self._fav_id = str(items[0]["id"])
+        return self._fav_id
 
-    async def 点赞(self, 会话: aiohttp.ClientSession, aid: int) -> None:
-        await self._提交(会话, 点赞接口, {"aid": aid, "like": 1}, "点赞")
+    async def like(self, session: aiohttp.ClientSession, aid: int) -> None:
+        await self._post(session, LIKE_API, {"aid": aid, "like": 1}, "点赞")
 
-    async def 收藏(self, 会话: aiohttp.ClientSession, aid: int) -> None:
-        await self._提交(
-            会话,
-            收藏接口,
-            {"rid": aid, "type": 2, "add_media_ids": await self._默认收藏夹(会话)},
+    async def favorite(self, session: aiohttp.ClientSession, aid: int) -> None:
+        await self._post(
+            session,
+            FAV_API,
+            {"rid": aid, "type": 2, "add_media_ids": await self._default_fav(session)},
             "收藏",
         )

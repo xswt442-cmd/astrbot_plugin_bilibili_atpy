@@ -12,12 +12,15 @@
 - 网络请求只用 `aiohttp`。
 - 数据落在 `data/plugin_data/astrbot_plugin_bilibili_atpy/`，不写插件目录。
 - 登录态（`SESSDATA` / `bili_jct`）不进日志、不进异常消息、不进提交。
+- **标识符一律英文**（函数、类、变量、参数、常量、测试用例名），注释、docstring、
+  提示文案、指令名与磁盘上的 JSON 键保持中文。`content.get("记录", [])` 这类键是
+  已落盘的数据，改动要迁移。
 
 ## 指令不响应的两类原因
 
-**组别名带斜杠。** QQ 官方适配器在 `@机器人` 唤醒时 `wake_prefix = ""`，不剥 `message_str` 里的 `/`，拿到的是 `/atpy UMO`。只写组名 `atpy` 匹配不上，必须有 `_组别名 = {f"/{_组名}"}`。
+**组别名带斜杠。** QQ 官方适配器在 `@机器人` 唤醒时 `wake_prefix = ""`，不剥 `message_str` 里的 `/`，拿到的是 `/atpy UMO`。只写组名 `atpy` 匹配不上，必须有 `_GROUP_ALIASES = {f"/{_GROUP}"}`。
 
-**落空兜底。** `/atpy <不是子命令>` 时 `CommandGroupFilter` 返回 False，指令被跳过，消息进模型，输出与插件无关。`_落空兜底` 的 `filter` 所有出口必须 `return True`：语义是「这条消息是否由本组处理」，返回 False 会使整个指令组失效。新增子命令时 `atpy/兜底.子命令名` 要同步添加，`test_兜底不多不少` 校验。
+**落空兜底。** `/atpy <不是子命令>` 时 `CommandGroupFilter` 返回 False，指令被跳过，消息进模型，输出与插件无关。`_MissFallbackFilter` 的 `filter` 所有出口必须 `return True`：语义是「这条消息是否由本组处理」，返回 False 会使整个指令组失效。新增子命令时 `atpy.fallback.SUBCOMMANDS` 要同步添加，`test_fallback_matches_registered_commands` 校验。
 
 **插件白名单。** 插件加载成功、handler 全部注册、`enabled` / `activated` 均为真时，指令仍可能全部无响应：每个 bot 的 `abconf_<uuid>.json` 中 `plugin_set` 是白名单，未列入的插件其所有 `AdapterMessageEvent` handler 在 `waking_check` 阶段被跳过，过滤器不执行；`cmd_config.json` 的 `["*"]` 被它覆盖。新装插件后必须加入。
 
@@ -30,17 +33,17 @@
 - `atpy/pick.py` — 选片：五类关键词池、播放量与时间过滤、标题禁忌
 - `atpy/critic.py` — 锐评：提示词、清洗输出、十字截断
 - `atpy/store.py` — 落盘：历史记录与当日排期
-- `atpy/兜底.py` — 指令落空的判据与提示
+- `atpy/fallback.py` — 指令落空的判据与提示
 - `test/` — pytest 用例与真实接口验证脚本
 - `docs/` — 更新日志、部署说明、发版说明
 
 ## 主循环是后台任务
 
-AstrBot 没有内置调度器。`__init__` 中 `asyncio.create_task(self._调度())`，每 60 秒检查当天到点的档期，`terminate()` 中取消。指令与调度共用 `_跑一轮`。三条约束：
+AstrBot 没有内置调度器。`__init__` 中 `asyncio.create_task(self._scheduler())`，每 60 秒检查当天到点的档期，`terminate()` 中取消。指令与调度共用 `_run_round`。三条约束：
 
 - **过期档期不补跑。** 超过十分钟的档期丢弃，否则容器重启后会一次执行多轮。
 - **发评论失败不重试。** 跳过本轮，重试仅发生在「换关键词重搜」。同一轮重复发送会加快触发风控。
-- **`取排期` 用 `None` 与 `[]` 区分「当天未排期」与「当天排了零轮」。** 合并为空列表会导致每分钟重排并写盘。
+- **`get_schedule` 用 `None` 与 `[]` 区分「当天未排期」与「当天排了零轮」。** 合并为空列表会导致每分钟重排并写盘。
 
 ## 两处实测结论
 
@@ -49,7 +52,7 @@ AstrBot 没有内置调度器。`__init__` 中 `asyncio.create_task(self._调度
 
 ## 模型调用
 
-`_调模型` 直连 provider 的 `text_chat()`，不用 `tool_loop_agent`：此处只需文本到文本的转换，不需要工具；而 `tool_loop_agent` 会把当前会话挂载的全部工具 schema 加入请求并走 runner 循环。`recent_bili_critics` 是唯一注册的 LLM 工具，只读。
+`_call_model` 直连 provider 的 `text_chat()`，不用 `tool_loop_agent`：此处只需文本到文本的转换，不需要工具；而 `tool_loop_agent` 会把当前会话挂载的全部工具 schema 加入请求并走 runner 循环。`recent_bili_critics` 是唯一注册的 LLM 工具，只读。
 
 ## config 必须可省
 
